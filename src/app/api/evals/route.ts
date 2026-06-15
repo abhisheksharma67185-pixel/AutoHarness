@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
 import { fetchWithBypass } from '@/lib/api-helper';
 
 const BACKEND = process.env.VERCEL_URL
@@ -12,73 +13,169 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const suite_id = searchParams.get('suite_id');
 
-    // Case 1: Fetch details of a single suite from FastAPI
     if (suite_id) {
-      const [suiteRes, casesRes, runsRes] = await Promise.all([
-        fetch(`${BACKEND}/eval-suites/${suite_id}`, { cache: 'no-store' }),
-        fetch(`${BACKEND}/eval-suites/${suite_id}/cases`, { cache: 'no-store' }),
-        fetch(`${BACKEND}/eval-runs?eval_suite_id=${encodeURIComponent(suite_id)}`, { cache: 'no-store' }),
-      ]);
+      const cleanIdStr = suite_id.startsWith('es') ? suite_id.slice(2) : suite_id;
+      const suiteId = parseInt(cleanIdStr, 10);
 
-      if (!suiteRes.ok) {
-        const d = await suiteRes.json().catch(() => ({}));
-        return NextResponse.json({ error: d.detail || 'Suite not found' }, { status: suiteRes.status });
+      const suite = db.prepare(`
+        SELECT es.id, es.name, es.description, es.created_at, b.slug as benchmark_slug
+        FROM eval_suites es
+        JOIN benchmarks b ON es.benchmark_id = b.id
+        WHERE es.id = ?
+      `).get(suiteId) as any;
+
+      if (!suite) {
+        return NextResponse.json({ error: 'Suite not found' }, { status: 404 });
       }
 
-      const suiteData = await suiteRes.json();
-      const casesData = casesRes.ok ? await casesRes.json().catch(() => ({ data: [] })) : { data: [] };
-      const runsData = runsRes.ok ? await runsRes.json().catch(() => ({ data: [] })) : { data: [] };
+      const casesRows = db.prepare(`
+        SELECT ec.id, ec.benchmark_task_id, ec.input_spec, ec.expected_spec, bt.task_id as slug
+        FROM eval_cases ec
+        JOIN eval_suite_members esm ON ec.id = esm.eval_case_id
+        LEFT JOIN benchmark_tasks bt ON ec.benchmark_task_id = bt.id
+        WHERE esm.eval_suite_id = ?
+      `).all(suiteId) as any[];
 
-      const suite = suiteData.data || suiteData;
+      const cases = casesRows.map(c => {
+        let inputObj: any = {};
+        let expectedObj: any = {};
+        try { inputObj = JSON.parse(c.input_spec); } catch {}
+        try { expectedObj = JSON.parse(c.expected_spec); } catch {}
+        return {
+          id: c.id,
+          task_id: c.benchmark_task_id || c.id,
+          slug: c.slug || 'N/A',
+          category: inputObj.category || 'unknown',
+          difficulty: inputObj.difficulty || 'medium',
+          description: inputObj.original_instructions || inputObj.description || '',
+          input_spec: c.input_spec,
+          expected_spec: c.expected_spec,
+        };
+      });
 
-      // Normalize cases to what EvalSuitesClient.tsx expects
-      const cases = (casesData.data || []).map((c: any) => ({
-        id: c.id,
-        task_id: c.benchmark_task_id || c.id,
-        slug: c.benchmark_task_id || 'N/A',
-        category: c.input_spec?.category || 'unknown',
-        difficulty: c.input_spec?.difficulty || 'medium',
-        description: c.input_spec?.original_instructions || c.input_spec?.description || '',
-        input_spec: typeof c.input_spec === 'string' ? c.input_spec : JSON.stringify(c.input_spec || {}),
-        expected_spec: typeof c.expected_spec === 'string' ? c.expected_spec : JSON.stringify(c.expected_spec || {}),
-      }));
+      const runsRows = db.prepare(`
+        SELECT er.id, er.created_at, er.status, er.metrics, hv.name as harness_version_id
+        FROM eval_runs er
+        LEFT JOIN harness_versions hv ON er.harness_version_id = hv.id
+        WHERE er.eval_suite_id = ?
+        ORDER BY er.id DESC
+      `).all(suiteId) as any[];
 
-      // Normalize runs
-      const runs = (runsData.data || []).map((r: any) => ({
-        id: r.id,
-        created_at: r.created_at,
-        status: r.status,
-        metrics: typeof r.metrics === 'string' ? r.metrics : JSON.stringify(r.metrics || {}),
-        harness_version: r.harness_version_id || 'Unknown',
-        agent: r.experiment_variant_id || 'N/A',
-        pass_rate: r.metrics?.pass_rate ?? (typeof r.metrics === 'string' ? JSON.parse(r.metrics || '{}')?.pass_rate ?? 0 : 0),
-      }));
+      const runs = runsRows.map(r => {
+        let metricsObj: any = {};
+        try { metricsObj = JSON.parse(r.metrics); } catch {}
+        return {
+          id: r.id,
+          created_at: r.created_at,
+          status: r.status,
+          metrics: r.metrics,
+          harness_version: r.harness_version_id || 'Unknown',
+          agent: 'N/A',
+          pass_rate: metricsObj.pass_rate ?? 0,
+        };
+      });
 
-      return NextResponse.json({ suite, cases, runs });
+      return NextResponse.json({
+        suite: {
+          id: suite.id,
+          name: suite.name,
+          description: suite.description,
+          benchmark_id: suite.benchmark_slug,
+        },
+        cases,
+        runs
+      });
     }
 
-    // Case 2: Fetch all eval suites from FastAPI
-    const res = await fetch(`${BACKEND}/eval-suites/`, { cache: 'no-store' });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      return NextResponse.json({ error: d.detail || 'Failed to fetch suites' }, { status: res.status });
-    }
-    const data = await res.json();
-    const suites = (data.data || []).map((s: any) => ({
+    const suitesRows = db.prepare(`
+      SELECT es.id, es.name, es.description, b.slug as benchmark_slug,
+             COUNT(esm.eval_case_id) as case_count
+      FROM eval_suites es
+      JOIN benchmarks b ON es.benchmark_id = b.id
+      LEFT JOIN eval_suite_members esm ON es.id = esm.eval_suite_id
+      GROUP BY es.id
+      ORDER BY es.id ASC
+    `).all() as any[];
+
+    const suites = suitesRows.map(s => ({
       id: s.id,
       name: s.name,
       description: s.description,
       benchmark_id: s.benchmark_slug,
-      case_count: s.case_count ?? 0,
+      case_count: s.case_count || 0,
       recent_pass_rate: null,
       recent_harness_version: null,
     }));
 
     return NextResponse.json({ evalSuites: suites });
-
   } catch (err: any) {
-    console.error('Fetch evals error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('Direct evals query failed, falling back to HTTP:', err);
+    try {
+      const { searchParams } = new URL(req.url);
+      const suite_id = searchParams.get('suite_id');
+
+      if (suite_id) {
+        const [suiteRes, casesRes, runsRes] = await Promise.all([
+          fetch(`${BACKEND}/eval-suites/${suite_id}`, { cache: 'no-store' }),
+          fetch(`${BACKEND}/eval-suites/${suite_id}/cases`, { cache: 'no-store' }),
+          fetch(`${BACKEND}/eval-runs?eval_suite_id=${encodeURIComponent(suite_id)}`, { cache: 'no-store' }),
+        ]);
+
+        if (!suiteRes.ok) {
+          const d = await suiteRes.json().catch(() => ({}));
+          return NextResponse.json({ error: d.detail || 'Suite not found' }, { status: suiteRes.status });
+        }
+
+        const suiteData = await suiteRes.json();
+        const casesData = casesRes.ok ? await casesRes.json().catch(() => ({ data: [] })) : { data: [] };
+        const runsData = runsRes.ok ? await runsRes.json().catch(() => ({ data: [] })) : { data: [] };
+
+        const suite = suiteData.data || suiteData;
+
+        const cases = (casesData.data || []).map((c: any) => ({
+          id: c.id,
+          task_id: c.benchmark_task_id || c.id,
+          slug: c.benchmark_task_id || 'N/A',
+          category: c.input_spec?.category || 'unknown',
+          difficulty: c.input_spec?.difficulty || 'medium',
+          description: c.input_spec?.original_instructions || c.input_spec?.description || '',
+          input_spec: typeof c.input_spec === 'string' ? c.input_spec : JSON.stringify(c.input_spec || {}),
+          expected_spec: typeof c.expected_spec === 'string' ? c.expected_spec : JSON.stringify(c.expected_spec || {}),
+        }));
+
+        const runs = (runsData.data || []).map((r: any) => ({
+          id: r.id,
+          created_at: r.created_at,
+          status: r.status,
+          metrics: typeof r.metrics === 'string' ? r.metrics : JSON.stringify(r.metrics || {}),
+          harness_version: r.harness_version_id || 'Unknown',
+          agent: r.experiment_variant_id || 'N/A',
+          pass_rate: r.metrics?.pass_rate ?? (typeof r.metrics === 'string' ? JSON.parse(r.metrics || '{}')?.pass_rate ?? 0 : 0),
+        }));
+
+        return NextResponse.json({ suite, cases, runs });
+      }
+
+      const res = await fetch(`${BACKEND}/eval-suites/`, { cache: 'no-store' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        return NextResponse.json({ error: d.detail || 'Failed to fetch suites' }, { status: res.status });
+      }
+      const data = await res.json();
+      const suites = (data.data || []).map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        benchmark_id: s.benchmark_slug,
+        case_count: s.case_count ?? 0,
+        recent_pass_rate: null,
+        recent_harness_version: null,
+      }));
+
+      return NextResponse.json({ evalSuites: suites });
+    } catch (fallbackErr: any) {
+      return NextResponse.json({ error: fallbackErr.message }, { status: 500 });
+    }
   }
 }
 
