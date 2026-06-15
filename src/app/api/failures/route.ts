@@ -24,7 +24,8 @@ export async function GET(req: NextRequest) {
         FROM failure_modes fm
         JOIN failure_mode_members fmm ON fm.id = fmm.failure_mode_id
         JOIN failure_labels fl ON fmm.failure_label_id = fl.id
-        WHERE fl.run_id = ?
+        JOIN run_tasks rt ON fl.run_task_id = rt.id
+        WHERE rt.run_id = ?
       `;
       const modes = db.prepare(queryModes).all(run_id) as any[];
 
@@ -52,7 +53,8 @@ export async function GET(req: NextRequest) {
           SELECT fl.*
           FROM failure_labels fl
           JOIN failure_mode_members fmm ON fl.id = fmm.failure_label_id
-          WHERE fmm.failure_mode_id IN (${placeholders}) AND fl.run_id = ?
+          JOIN run_tasks rt ON fl.run_task_id = rt.id
+          WHERE fmm.failure_mode_id IN (${placeholders}) AND rt.run_id = ?
         `).all(...fmIds, run_id) as any[];
 
         // Deduplicate labels by ID
