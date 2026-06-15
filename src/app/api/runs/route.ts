@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { getBackendUrl } from '@/lib/api-helper';
+import { getBackendUrl, fetchWithBypass } from '@/lib/api-helper';
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
       url += `?benchmark_slug=${encodeURIComponent(benchmarkSlug)}`;
     }
 
-    const response = await fetch(url, { cache: 'no-store' });
+    const response = await fetchWithBypass(url, { cache: 'no-store' });
     const data = await response.json();
 
     if (!response.ok) {
@@ -47,7 +47,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Missing run_id' }, { status: 400 });
     }
 
-    const response = await fetch(getBackendUrl(`/runs/${run_id}`), {
+    const response = await fetchWithBypass(getBackendUrl(`/runs/${run_id}`), {
       method: 'DELETE'
     });
     const data = await response.json();

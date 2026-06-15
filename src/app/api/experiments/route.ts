@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchWithBypass } from '@/lib/api-helper';
 
 const BACKEND = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}/_/backend/api/v1`
   : 'http://localhost:8001/api/v1';
+
+const fetch = fetchWithBypass;
 
 export async function GET(req: NextRequest) {
   try {

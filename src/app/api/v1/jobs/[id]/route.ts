@@ -1,9 +1,11 @@
 import { NextRequest } from 'next/server';
-import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
+import { checkAuth, sendSuccess, sendError, fetchWithBypass } from '@/lib/api-helper';
 
 const BACKEND = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}/_/backend/api/v1`
   : 'http://localhost:8001/api/v1';
+
+const fetch = fetchWithBypass;
 
 interface Params {
   params: Promise<{

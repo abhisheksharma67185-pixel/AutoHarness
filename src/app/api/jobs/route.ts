@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBackendUrl } from '@/lib/api-helper';
+import { getBackendUrl, fetchWithBypass } from '@/lib/api-helper';
 
 // POST /api/jobs - Trigger a background job on the FastAPI backend
 export async function POST(req: NextRequest) {
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `Unknown job type: ${type}` }, { status: 400 });
     }
 
-    const res = await fetch(endpoint, {
+    const res = await fetchWithBypass(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Missing job_id' }, { status: 400 });
     }
 
-    const res = await fetch(getBackendUrl(`/jobs/${encodeURIComponent(job_id)}`), { cache: 'no-store' });
+    const res = await fetchWithBypass(getBackendUrl(`/jobs/${encodeURIComponent(job_id)}`), { cache: 'no-store' });
     const data = await res.json();
 
     if (!res.ok) {

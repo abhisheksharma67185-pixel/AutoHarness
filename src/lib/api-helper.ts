@@ -33,3 +33,12 @@ export function getBackendUrl(path: string = ''): string {
   return `http://localhost:8001/api/v1${cleanPath}`;
 }
 
+export async function fetchWithBypass(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(options.headers || {});
+  if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
+    headers.set('x-vercel-protection-bypass', process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
+  }
+  return fetch(url, { ...options, headers });
+}
+
+
