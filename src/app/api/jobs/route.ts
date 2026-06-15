@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const BACKEND = 'http://localhost:8001/api/v1';
+import { getBackendUrl } from '@/lib/api-helper';
 
 // POST /api/jobs - Trigger a background job on the FastAPI backend
 export async function POST(req: NextRequest) {
@@ -11,16 +10,16 @@ export async function POST(req: NextRequest) {
     let endpoint = '';
     switch (type) {
       case 'diagnose':
-        endpoint = `${BACKEND}/jobs/diagnose-failures`;
+        endpoint = getBackendUrl('/jobs/diagnose-failures');
         break;
       case 'cluster':
-        endpoint = `${BACKEND}/jobs/cluster`;
+        endpoint = getBackendUrl('/jobs/cluster');
         break;
       case 'recluster':
-        endpoint = `${BACKEND}/jobs/recluster-failure-modes`;
+        endpoint = getBackendUrl('/jobs/recluster-failure-modes');
         break;
       case 'embed':
-        endpoint = `${BACKEND}/jobs/embed-failure-labels`;
+        endpoint = getBackendUrl('/jobs/embed-failure-labels');
         break;
       default:
         return NextResponse.json({ error: `Unknown job type: ${type}` }, { status: 400 });
@@ -61,7 +60,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Missing job_id' }, { status: 400 });
     }
 
-    const res = await fetch(`${BACKEND}/jobs/${encodeURIComponent(job_id)}`, { cache: 'no-store' });
+    const res = await fetch(getBackendUrl(`/jobs/${encodeURIComponent(job_id)}`), { cache: 'no-store' });
     const data = await res.json();
 
     if (!res.ok) {

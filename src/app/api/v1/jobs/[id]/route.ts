@@ -1,6 +1,10 @@
 import { NextRequest } from 'next/server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
+const BACKEND = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}/_/backend/api/v1`
+  : 'http://localhost:8001/api/v1';
+
 interface Params {
   params: Promise<{
     id: string;
@@ -23,7 +27,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
 
     // Fallback to FastAPI backend
-    const response = await fetch(`http://localhost:8001/api/v1/jobs/${id}`, { cache: 'no-store' });
+    const response = await fetch(`${BACKEND}/jobs/${id}`, { cache: 'no-store' });
     const data = await response.json();
 
     if (!response.ok) {

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getBackendUrl } from '@/lib/api-helper';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const benchmarkSlug = searchParams.get('benchmark');
 
-    let url = 'http://localhost:8001/api/v1/runs/';
+    let url = getBackendUrl('/runs/');
     if (benchmarkSlug) {
       url += `?benchmark_slug=${encodeURIComponent(benchmarkSlug)}`;
     }
@@ -46,7 +47,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Missing run_id' }, { status: 400 });
     }
 
-    const response = await fetch(`http://localhost:8001/api/v1/runs/${run_id}`, {
+    const response = await fetch(getBackendUrl(`/runs/${run_id}`), {
       method: 'DELETE'
     });
     const data = await response.json();

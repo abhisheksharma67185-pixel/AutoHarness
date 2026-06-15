@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND = 'http://localhost:8001/api/v1';
+const BACKEND = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}/_/backend/api/v1`
+  : 'http://localhost:8001/api/v1';
 
 export async function GET(req: NextRequest) {
   try {

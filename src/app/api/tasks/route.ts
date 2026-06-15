@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const BACKEND = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}/_/backend/api/v1`
+  : 'http://localhost:8001/api/v1';
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -8,13 +12,13 @@ export async function GET(req: NextRequest) {
 
     // Case 1: Fetch single task detail with trace steps
     if (run_task_id) {
-      const taskRes = await fetch(`http://localhost:8001/api/v1/tasks/${run_task_id}`, { cache: 'no-store' });
+      const taskRes = await fetch(`${BACKEND}/tasks/${run_task_id}`, { cache: 'no-store' });
       const taskData = await taskRes.json();
       if (!taskRes.ok) {
         return NextResponse.json({ error: taskData.detail || 'Task not found' }, { status: taskRes.status });
       }
 
-      const traceRes = await fetch(`http://localhost:8001/api/v1/tasks/${run_task_id}/trace`, { cache: 'no-store' });
+      const traceRes = await fetch(`${BACKEND}/tasks/${run_task_id}/trace`, { cache: 'no-store' });
       const traceData = await traceRes.json();
       const steps = (traceData.data?.steps || []).map((s: any) => {
         let type = 'LOG';
@@ -46,7 +50,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const category = searchParams.get('category');
 
-    let url = `http://localhost:8001/api/v1/runs/${run_id}/tasks`;
+    let url = `${BACKEND}/runs/${run_id}/tasks`;
     const params: string[] = [];
     if (status) params.push(`status=${encodeURIComponent(status)}`);
     if (category) params.push(`category=${encodeURIComponent(category)}`);
@@ -86,7 +90,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const response = await fetch('http://localhost:8001/api/v1/tasks/override', {
+    const response = await fetch(`${BACKEND}/tasks/override`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
