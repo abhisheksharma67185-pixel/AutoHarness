@@ -38,7 +38,20 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    import os
+    import shutil
+    settings = Settings()
+    if os.environ.get("VERCEL"):
+        src_db = f"{BACKEND_DIR}/dev.db"
+        dst_db = "/tmp/dev.db"
+        if os.path.exists(src_db) and not os.path.exists(dst_db):
+            try:
+                shutil.copy2(src_db, dst_db)
+                print(f"Successfully copied backend DB to {dst_db}")
+            except Exception as e:
+                print(f"Failed to copy backend DB: {e}")
+        settings.database_url = f"sqlite+aiosqlite:///{dst_db}"
+    return settings
 
 settings = get_settings()
 

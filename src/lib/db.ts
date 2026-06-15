@@ -1,7 +1,21 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 
-const DB_PATH = path.join(process.cwd(), 'autoharness.db');
+let DB_PATH = path.join(process.cwd(), 'autoharness.db');
+
+if (process.env.NODE_ENV === 'production') {
+  const tmpDbPath = path.join('/tmp', 'autoharness.db');
+  if (!fs.existsSync(tmpDbPath)) {
+    try {
+      fs.copyFileSync(DB_PATH, tmpDbPath);
+      console.log('Successfully copied seed database to /tmp/autoharness.db');
+    } catch (err) {
+      console.error('Failed to copy seed database to /tmp:', err);
+    }
+  }
+  DB_PATH = tmpDbPath;
+}
 
 let db: Database.Database;
 
