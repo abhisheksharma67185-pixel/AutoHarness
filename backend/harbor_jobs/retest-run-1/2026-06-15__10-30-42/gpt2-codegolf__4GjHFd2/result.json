@@ -1,0 +1,110 @@
+{
+    "id": "b91a6c2e-0e5d-4d79-9d7f-c3504df14d18",
+    "task_name": "gpt2-codegolf",
+    "trial_name": "gpt2-codegolf__4GjHFd2",
+    "trial_uri": "file:///Users/abhisheksharma/Projects/AutoHarness-Studio/backend/harbor_jobs/retest-run-1/2026-06-15__10-30-42/gpt2-codegolf__4GjHFd2",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "gpt2-codegolf"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "c3dfea370953fe9b6cb53d368f1f242af2833cf1af623849bdaee8fe026b1cf1",
+    "config": {
+        "task": {
+            "path": "gpt2-codegolf",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "gpt2-codegolf__4GjHFd2",
+        "trials_dir": "harbor_jobs/retest-run-1/2026-06-15__10-30-42",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "oracle",
+            "import_path": null,
+            "model_name": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "env": {},
+            "mcp_servers": []
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "env": {},
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "env": {},
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "job_id": "d9607697-1b58-4b2f-aad0-9a065d818a8c"
+    },
+    "agent_info": {
+        "name": "oracle",
+        "version": "1.0.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-06-15T05:00:45.577120Z",
+    "finished_at": "2026-06-15T05:02:42.004685Z",
+    "environment_setup": {
+        "started_at": "2026-06-15T05:00:45.651433Z",
+        "finished_at": "2026-06-15T05:01:54.256380Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-06-15T05:01:54.256543Z",
+        "finished_at": "2026-06-15T05:01:54.256606Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-06-15T05:01:54.256753Z",
+        "finished_at": "2026-06-15T05:01:54.491850Z"
+    },
+    "verifier": {
+        "started_at": "2026-06-15T05:01:54.844062Z",
+        "finished_at": "2026-06-15T05:02:31.068131Z"
+    },
+    "step_results": null
+}

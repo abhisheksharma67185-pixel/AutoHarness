@@ -1,0 +1,3 @@
+Skipping image OS validation for alexgshaw/regex-log:20251031: docker inspect returned 1
+Skipping image OS validation for alexgshaw/sqlite-db-truncate:20251031: docker inspect returned 1
+Skipping image OS validation for alexgshaw/openssl-selfsigned-cert:20251031: docker inspect returned 1

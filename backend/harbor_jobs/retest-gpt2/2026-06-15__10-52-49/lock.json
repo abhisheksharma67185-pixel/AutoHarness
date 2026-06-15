@@ -1,0 +1,74 @@
+{
+    "schema_version": 1,
+    "created_at": "2026-06-15T05:22:53.100398Z",
+    "harbor": {
+        "version": "0.13.2",
+        "is_editable": false
+    },
+    "invocation": [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/harbor",
+        "run",
+        "--dataset",
+        "terminal-bench@2.0",
+        "--agent",
+        "oracle",
+        "--include-task-name",
+        "gpt2-codegolf",
+        "--jobs-dir",
+        "./harbor_jobs/retest-gpt2",
+        "--n-concurrent",
+        "1"
+    ],
+    "n_concurrent_trials": 1,
+    "retry": {
+        "max_retries": 0,
+        "exclude_exceptions": [
+            "VerifierOutputParseError",
+            "RewardFileEmptyError",
+            "VerifierTimeoutError",
+            "AgentTimeoutError",
+            "RewardFileNotFoundError"
+        ],
+        "wait_multiplier": 1.0,
+        "min_wait_sec": 1.0,
+        "max_wait_sec": 60.0
+    },
+    "trials": [
+        {
+            "task": {
+                "name": "gpt2-codegolf",
+                "type": "git",
+                "digest": "sha256:6655c38696522d4dc90f2375be4887655a43cac0800a7bd7a2d56523a5f39aed",
+                "source": "terminal-bench",
+                "path": "gpt2-codegolf",
+                "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+                "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c"
+            },
+            "timeout_multiplier": 1.0,
+            "agent": {
+                "name": "oracle",
+                "skills": [],
+                "extra_allowed_hosts": [],
+                "kwargs": {},
+                "env": {},
+                "mcp_servers": []
+            },
+            "skills": [],
+            "environment": {
+                "type": "docker",
+                "force_build": false,
+                "delete": true,
+                "cpu_enforcement_policy": "auto",
+                "memory_enforcement_policy": "auto",
+                "extra_docker_compose": [],
+                "env": {},
+                "kwargs": {},
+                "extra_allowed_hosts": []
+            },
+            "verifier": {
+                "env": {},
+                "disable": false
+            }
+        }
+    ]
+}

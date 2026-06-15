@@ -1,0 +1,379 @@
+{
+  "run_id": "run-tb2-baseline",
+  "metadata": {
+    "benchmark": "Terminal-Bench 2.0",
+    "benchmark_slug": "terminal_bench_2",
+    "benchmark_description": "Terminal operations benchmark for command-line agent evaluation.",
+    "agent": "SigmaAgent v1.2",
+    "harness_version": "v1.0.0",
+    "run_label": "Baseline Ingestion Run",
+    "raw_artifact_uri": "public/demo/runs/baseline.json"
+  },
+  "tasks": [
+    {
+      "task_id": "tb-task-01",
+      "slug": "nginx-port-clash",
+      "category": "Web Administration",
+      "difficulty": "Medium",
+      "description": "Find why nginx fails to start on the target container, resolve any port binding clashes, and start the service.",
+      "success": true,
+      "score": 1,
+      "steps": [
+        {
+          "step_index": 0,
+          "type": "agent",
+          "content": "I need to check why nginx fails to start. I will run systemctl status nginx."
+        },
+        {
+          "step_index": 1,
+          "type": "tool_call",
+          "content": "systemctl status nginx"
+        },
+        {
+          "step_index": 2,
+          "type": "tool_output",
+          "output": "nginx.service - A high performance web server and reverse proxy\nActive: failed\nError: bind() to 0.0.0.0:80 failed (Address already in use)"
+        },
+        {
+          "step_index": 3,
+          "type": "agent",
+          "content": "Ah, port 80 is already in use. Let me check what process is binding port 80."
+        },
+        {
+          "step_index": 4,
+          "type": "tool_call",
+          "content": "ss -tulpn | grep :80"
+        },
+        {
+          "step_index": 5,
+          "type": "tool_output",
+          "output": "tcp   LISTEN 0      511          0.0.0.0:80        0.0.0.0:*      users:((\"apache2\",pid=912,fd=4))"
+        },
+        {
+          "step_index": 6,
+          "type": "agent",
+          "content": "Apache is running on port 80. I will stop apache2 and start nginx."
+        },
+        {
+          "step_index": 7,
+          "type": "tool_call",
+          "content": "systemctl stop apache2 && systemctl start nginx"
+        },
+        {
+          "step_index": 8,
+          "type": "tool_output",
+          "output": "Stopping apache2... Done\nStarting nginx... Done"
+        },
+        {
+          "step_index": 9,
+          "type": "agent",
+          "content": "Nginx started successfully. Task complete!"
+        }
+      ]
+    },
+    {
+      "task_id": "tb-task-02",
+      "slug": "git-rebase-conflict",
+      "category": "Version Control",
+      "difficulty": "Hard",
+      "description": "Run git rebase origin/main on the feature branch, resolve any conflict markers inside lib/core.py, and finish the rebase.",
+      "success": false,
+      "score": 0,
+      "steps": [
+        {
+          "step_index": 0,
+          "type": "agent",
+          "content": "I will start the git rebase."
+        },
+        {
+          "step_index": 1,
+          "type": "tool_call",
+          "content": "git rebase origin/main"
+        },
+        {
+          "step_index": 2,
+          "type": "tool_output",
+          "output": "CONFLICT (content): Merge conflict in lib/core.py\nResolve all conflicts manually."
+        },
+        {
+          "step_index": 3,
+          "type": "agent",
+          "content": "Let me view conflict markers."
+        },
+        {
+          "step_index": 4,
+          "type": "tool_call",
+          "content": "cat lib/core.py"
+        },
+        {
+          "step_index": 5,
+          "type": "tool_output",
+          "output": "<<<<<<< HEAD\ndef get_score(self):\n    return self.score * 100\n=======\ndef get_score(self):\n    return self.base_score + self.delta\n>>>>>>> feature/scores"
+        },
+        {
+          "step_index": 6,
+          "type": "agent",
+          "content": "I need to edit this file. I will use the edit tool but with wrong parameters."
+        },
+        {
+          "step_index": 7,
+          "type": "tool_call",
+          "content": "replace_in_file \"lib/core.py\" \"<<<<<<< HEAD\" \"def get_score(self):\n    return self.base_score + self.delta\""
+        },
+        {
+          "step_index": 8,
+          "type": "tool_output",
+          "output": "Error: Cannot find substring. The replace command is missing end line block constraints."
+        },
+        {
+          "step_index": 9,
+          "type": "agent",
+          "content": "Oops. I will try running git rebase --abort."
+        },
+        {
+          "step_index": 10,
+          "type": "tool_call",
+          "content": "git rebase --abort"
+        },
+        {
+          "step_index": 11,
+          "type": "tool_output",
+          "output": "Rebase aborted."
+        }
+      ]
+    },
+    {
+      "task_id": "tb-task-03",
+      "slug": "parse-server-logs",
+      "category": "Data Processing",
+      "difficulty": "Easy",
+      "description": "Write a script or pipeline to extract all HTTP 500 error logs from /var/log/nginx/access.log, group them by path, and save to /tmp/report.json.",
+      "success": true,
+      "score": 1,
+      "steps": [
+        {
+          "step_index": 0,
+          "type": "agent",
+          "content": "I will search for HTTP 500 error lines in the logs."
+        },
+        {
+          "step_index": 1,
+          "type": "tool_call",
+          "content": "awk '$9 == 500 {print $7}' /var/log/nginx/access.log | sort | uniq -c"
+        },
+        {
+          "step_index": 2,
+          "type": "tool_output",
+          "output": "  12 /api/v1/users\n  45 /api/v1/auth/login"
+        },
+        {
+          "step_index": 3,
+          "type": "agent",
+          "content": "Great, now I will format this as a JSON file."
+        },
+        {
+          "step_index": 4,
+          "type": "tool_call",
+          "content": "echo '{\"/api/v1/users\": 12, \"/api/v1/auth/login\": 45}' > /tmp/report.json"
+        },
+        {
+          "step_index": 5,
+          "type": "tool_output",
+          "output": ""
+        },
+        {
+          "step_index": 6,
+          "type": "agent",
+          "content": "Report generated successfully."
+        }
+      ]
+    },
+    {
+      "task_id": "tb-task-04",
+      "slug": "db-migration-failure",
+      "category": "Database Management",
+      "difficulty": "Hard",
+      "description": "Run the Alembic database migrations. Identify why migration 4fa2bc fails, edit the migration code to fix the column type mismatch, and run it again.",
+      "success": false,
+      "score": 0,
+      "steps": [
+        {
+          "step_index": 0,
+          "type": "agent",
+          "content": "I will run alembic migrations."
+        },
+        {
+          "step_index": 1,
+          "type": "tool_call",
+          "content": "alembic upgrade head"
+        },
+        {
+          "step_index": 2,
+          "type": "tool_output",
+          "output": "Traceback (most recent call last):\n  File \"alembic/versions/4fa2bc_migration.py\", line 22, in upgrade\n    op.alter_column('orders', 'price', type_=sa.Integer())\nTypeError: alter_column() missing required argument \"existing_type\""
+        },
+        {
+          "step_index": 3,
+          "type": "agent",
+          "content": "Ah, the python Alembic script itself crashed due to a TypeError."
+        }
+      ]
+    },
+    {
+      "task_id": "tb-task-05",
+      "slug": "docker-build-missing-dep",
+      "category": "DevOps",
+      "difficulty": "Medium",
+      "description": "Build the local docker image from Dockerfile. If packages are missing during the build phase, update the docker file to install them beforehand.",
+      "success": false,
+      "score": 0,
+      "steps": [
+        {
+          "step_index": 0,
+          "type": "agent",
+          "content": "I will try to build the Docker image."
+        },
+        {
+          "step_index": 1,
+          "type": "tool_call",
+          "content": "docker build -t app:latest ."
+        },
+        {
+          "step_index": 2,
+          "type": "tool_output",
+          "output": "sh: docker: command not found"
+        }
+      ]
+    },
+    {
+      "task_id": "tb-task-06",
+      "slug": "fetch-api-timeout",
+      "category": "Network Operations",
+      "difficulty": "Easy",
+      "description": "Query the internal service API at http://10.0.5.11:8080/health, check if it is active, and configure automatic retries.",
+      "success": false,
+      "score": 0,
+      "steps": [
+        {
+          "step_index": 0,
+          "type": "agent",
+          "content": "I will check connection to http://10.0.5.11:8080/health."
+        },
+        {
+          "step_index": 1,
+          "type": "tool_call",
+          "content": "curl -I http://10.0.5.11:8080/health"
+        },
+        {
+          "step_index": 2,
+          "type": "tool_output",
+          "output": "curl: (7) Failed to connect to 10.0.5.11 port 8080: Connection timed out"
+        }
+      ]
+    },
+    {
+      "task_id": "tb-task-07",
+      "slug": "restricted-sudo-write",
+      "category": "Security",
+      "difficulty": "Medium",
+      "description": "Verify the integrity of /etc/hosts and add a new hostname mapping pointing local.dev to 127.0.0.1.",
+      "success": false,
+      "score": 0,
+      "steps": [
+        {
+          "step_index": 0,
+          "type": "agent",
+          "content": "I will append a line to /etc/hosts."
+        },
+        {
+          "step_index": 1,
+          "type": "tool_call",
+          "content": "echo \"127.0.0.1 local.dev\" >> /etc/hosts"
+        },
+        {
+          "step_index": 2,
+          "type": "tool_output",
+          "output": "sh: /etc/hosts: Permission denied"
+        }
+      ]
+    },
+    {
+      "task_id": "tb-task-08",
+      "slug": "disk-cleanup-logs",
+      "category": "System Diagnostics",
+      "difficulty": "Easy",
+      "description": "Locate logs taking up excessive space under /var/log and clear rotated files ending in .gz older than 7 days.",
+      "success": true,
+      "score": 1,
+      "steps": [
+        {
+          "step_index": 0,
+          "type": "agent",
+          "content": "Let me find .gz logs."
+        },
+        {
+          "step_index": 1,
+          "type": "tool_call",
+          "content": "find /var/log -name \"*.gz\" -delete"
+        }
+      ]
+    },
+    {
+      "task_id": "tb-task-09",
+      "slug": "backup-config-ambiguity",
+      "category": "Configuration Management",
+      "difficulty": "Medium",
+      "description": "Locate the backup configuration file in the project, set backup_interval to 3600, and save it.",
+      "success": false,
+      "score": 0,
+      "steps": [
+        {
+          "step_index": 0,
+          "type": "agent",
+          "content": "I need to locate the backup configuration."
+        },
+        {
+          "step_index": 1,
+          "type": "tool_call",
+          "content": "find . -name \"*backup*\""
+        },
+        {
+          "step_index": 2,
+          "type": "tool_output",
+          "output": "./config/backup.yaml\n./config/backup-prod.json"
+        },
+        {
+          "step_index": 3,
+          "type": "agent",
+          "content": "Multiple backup files. I will update backup.yaml only."
+        },
+        {
+          "step_index": 4,
+          "type": "tool_call",
+          "content": "echo \"backup_interval: 3600\" >> ./config/backup.yaml"
+        }
+      ]
+    },
+    {
+      "task_id": "tb-task-10",
+      "slug": "cron-job-setup",
+      "category": "System Diagnostics",
+      "difficulty": "Easy",
+      "description": "Configure a cron job that executes /usr/local/bin/cleanup.sh every night at 2:00 AM and forwards logs.",
+      "success": true,
+      "score": 1,
+      "steps": [
+        {
+          "step_index": 0,
+          "type": "agent",
+          "content": "Let me write the cron job."
+        },
+        {
+          "step_index": 1,
+          "type": "tool_call",
+          "content": "crontab -l 2>/dev/null; echo \"0 2 * * * /usr/local/bin/cleanup.sh\""
+        }
+      ]
+    }
+  ]
+}

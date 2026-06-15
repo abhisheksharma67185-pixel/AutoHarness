@@ -1,0 +1,616 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+:root {
+  /* HSL Color System - Light Mode Refined (Sleek Cornflower Blue Accent) */
+  --bg-base: 240 10% 97.5%;      /* light grey-blue off-white */
+  --bg-card: 0 0% 100%;          /* pure white card surface */
+  --bg-card-hover: 240 5% 95%;   /* soft grey on hover */
+  --border-glow: 219 85% 60%;
+  
+  --foreground: 240 10% 12%;      /* deep slate for readability */
+  --foreground-muted: 240 5% 45%; /* neutral grey for secondary texts */
+  
+  --primary: 219 85% 60%;        /* strong premium cornflower blue accent (#4f8dfc) */
+  --primary-glow: rgba(79, 141, 252, 0.06);
+  
+  --emerald: 150 84% 37%;        /* green */
+  --amber: 35 92% 50%;          /* amber */
+  --rose: 343 81% 55%;           /* red */
+  --blue: 217 91% 60%;
+  
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --glass-border-hover: rgba(0, 0, 0, 0.12);
+  --glass-shadow: rgba(0, 0, 0, 0.03);
+}
+
+body {
+  background-color: hsl(var(--bg-base));
+  color: hsl(var(--foreground));
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.03);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 20px 0 var(--glass-shadow);
+  border-radius: 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-panel:hover {
+  border-color: var(--glass-border-hover);
+}
+
+.glass-panel-interactive {
+  composes: glass-panel;
+  cursor: pointer;
+}
+
+.glass-panel-interactive:hover {
+  box-shadow: 0 8px 32px 0 rgba(139, 92, 246, 0.05), 0 0 1px 1px hsl(var(--primary) / 0.2);
+  transform: translateY(-1px);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Page Glow effects */
+.radial-glow {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.04) 0%, rgba(0,0,0,0) 70%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Header/Gradients */
+.text-gradient {
+  background: linear-gradient(135deg, #111827 30%, #6d28d9 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-purple {
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Navigation layout */
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  color: hsl(var(--foreground-muted));
+  font-weight: 500;
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+}
+
+.nav-link:hover, .nav-link-active {
+  color: hsl(var(--foreground));
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.nav-link-active {
+  border-left: 3px solid hsl(var(--primary));
+  border-radius: 0 8px 8px 0;
+  background: linear-gradient(90deg, rgba(139, 92, 246, 0.04) 0%, rgba(0,0,0,0) 100%);
+  color: hsl(var(--primary)) !important;
+}
+
+/* Table Style custom */
+.studio-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.studio-table th {
+  text-align: left;
+  padding: 12px 16px;
+  font-weight: 600;
+  color: hsl(var(--foreground-muted));
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.studio-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+  font-size: 0.95rem;
+}
+
+.studio-table tr:hover td {
+  background: rgba(0, 0, 0, 0.01);
+}
+
+/* Badge styles */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge-success {
+  background: rgba(16, 185, 129, 0.1);
+  color: rgb(5, 150, 105);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.badge-fail {
+  background: rgba(239, 68, 68, 0.1);
+  color: rgb(220, 38, 38);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.badge-warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: rgb(217, 119, 6);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.badge-info {
+  background: rgba(59, 130, 246, 0.1);
+  color: rgb(37, 99, 235);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* Terminal trajectory styling */
+.terminal-block {
+  background: #f8fafc;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 16px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  color: #334155;
+}
+
+.step-agent-thought {
+  border-left: 3px solid hsl(var(--primary));
+  padding-left: 12px;
+  margin-bottom: 12px;
+  color: #6d28d9;
+}
+
+.step-tool-call {
+  background: rgba(99, 102, 241, 0.06);
+  border-left: 3px solid #6366f1;
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 12px;
+  color: #4338ca;
+}
+
+.step-tool-output {
+  background: #f1f5f9;
+  border-left: 3px solid #64748b;
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 16px;
+  color: #475569;
+}
+
+/* Ingestion Dropzone */
+.dropzone {
+  border: 2px dashed rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 32px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.005);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: hsl(var(--foreground-muted));
+}
+
+.dropzone:hover {
+  border-color: hsl(var(--primary));
+  background: rgba(139, 92, 246, 0.03);
+  color: hsl(var(--primary));
+}
+
+/* Card layout grid */
+.studio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+/* ==========================================
+   Light Mode Global Theme Overrides 
+   ========================================== */
+
+/* 1. Global Typography: force standard dark slate color for readable headings and body elements */
+h1, h2, h3, h4, h5, h6 {
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Target utility color text-white and map it to deep slate, excluding elements that must remain white */
+.text-white:not(button):not(.btn):not(.badge):not([class*="bg-purple"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-blue"]):not([class*="bg-amber"]):not([class*="bg-gradient"]):not(svg):not(path) {
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Also ensure some specific labels/titles marked with text-white are dark slate */
+.glass-panel h3, .glass-panel h4, .glass-panel span.font-semibold {
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Secondary muted text */
+.text-gray-300, .text-gray-400, .text-slate-400, .text-zinc-400 {
+  color: hsl(var(--foreground-muted)) !important;
+}
+
+/* Inactive status tab button hover */
+.text-gray-400.hover\:text-white:hover {
+  color: hsl(var(--foreground)) !important;
+}
+
+/* 2. Global Background Overrides: convert dark transparent panels to white or very light grey surfaces */
+.bg-black\/10 {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+}
+
+.bg-black\/20 {
+  background-color: #f8fafc !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.bg-black\/25 {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+  border-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+.bg-black\/25 span.text-white {
+  color: hsl(var(--foreground)) !important;
+}
+
+.bg-black\/30 {
+  background-color: rgba(0, 0, 0, 0.03) !important;
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+}
+
+.bg-black\/40, .bg-black\/50 {
+  background-color: #ffffff !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.bg-black\/55 {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.bg-black\/55 span.text-gray-300 {
+  color: #334155 !important;
+}
+
+.bg-black\/60 {
+  background-color: #f1f5f9 !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.bg-white\/\[0\.01\], .bg-white\/\[0\.02\], .bg-white\/\[0\.04\] {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+}
+
+.hover\:bg-white\/\[0\.02\]:hover, .hover\:bg-white\/\[0\.04\]:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Soft grey border overrides */
+.border-white\/10, .border-white\/20, .border-white\/5, .border-white\/\[0\.02\], .border-white\/\[0\.03\], .border-white\/\[0\.04\], .border-white\/\[0\.08\] {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* 3. Inputs, selects & textareas */
+select, input[type="text"], input[type="number"], textarea {
+  background-color: #ffffff !important;
+  color: hsl(var(--foreground)) !important;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  border-radius: 6px !important;
+  padding: 6px 12px !important;
+}
+
+select option {
+  background-color: #ffffff !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Custom premium search input redesign classes */
+.search-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+input[type="text"].studio-search-input {
+  width: 100% !important;
+  padding-left: 2.25rem !important; /* leaves space for Search icon */
+  padding-right: 2.25rem !important; /* leaves space for X/shortcut badge */
+  background-color: rgba(0, 0, 0, 0.02) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 8px !important;
+  font-size: 0.7rem !important;
+  line-height: 1.5 !important;
+  height: 36px !important;
+  color: hsl(var(--foreground)) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+input[type="text"].studio-search-input::placeholder {
+  color: hsl(var(--foreground-muted)) !important;
+  opacity: 0.6 !important;
+  font-size: 0.7rem !important;
+}
+
+input[type="text"].studio-search-input:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(79, 141, 252, 0.25) !important;
+}
+
+input[type="text"].studio-search-input:focus {
+  background-color: #ffffff !important;
+  border-color: #4f8dfc !important; /* var(--primary) accent */
+  box-shadow: 0 0 0 3px rgba(79, 141, 252, 0.12), 0 2px 4px rgba(0, 0, 0, 0.02) !important;
+  outline: none !important;
+}
+
+/* Shortcut badge */
+.search-shortcut-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 600;
+  color: hsl(var(--foreground-muted)) !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 4px;
+  padding: 2px 4px;
+  line-height: 1;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  gap: 1px;
+}
+
+.clear-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--foreground-muted)) !important;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  padding: 2px;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer;
+}
+
+.clear-search-btn:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* 4. Active state backgrounds & highlighted elements */
+.bg-purple-900\/10 {
+  background-color: rgba(79, 141, 252, 0.08) !important;
+}
+
+/* Info Cards & Welcome Hero Banner gradients */
+.bg-gradient-to-br.from-indigo-950\/20.to-purple-950\/20 {
+  background-image: linear-gradient(to bottom right, rgba(79, 141, 252, 0.04), rgba(79, 141, 252, 0.04)) !important;
+}
+
+.bg-gradient-to-r.from-purple-900\/10.to-indigo-900\/10 {
+  background-image: linear-gradient(to right, rgba(79, 141, 252, 0.04), rgba(79, 141, 252, 0.04)) !important;
+}
+
+/* 5. Gating rules / Status Badges */
+.bg-red-950\/20 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+  color: rgb(220, 38, 38) !important;
+  border-color: rgba(239, 68, 68, 0.2) !important;
+}
+
+.bg-red-950\/5 {
+  background-color: rgba(239, 68, 68, 0.03) !important;
+  border-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+.bg-emerald-950\/20 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  color: rgb(5, 150, 105) !important;
+  border-color: rgba(16, 185, 129, 0.2) !important;
+}
+
+.bg-purple-900\/30 {
+  background-color: rgba(79, 141, 252, 0.1) !important;
+  color: hsl(var(--primary)) !important;
+  border-color: rgba(79, 141, 252, 0.2) !important;
+}
+
+.bg-purple-600\/30 {
+  background-color: hsl(var(--primary)) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+}
+
+.bg-amber-950\/20 {
+  background-color: rgba(245, 158, 11, 0.1) !important;
+  color: rgb(217, 119, 6) !important;
+  border-color: rgba(245, 158, 11, 0.2) !important;
+}
+
+.bg-white\/5 {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.bg-white\/5:hover, .hover\:bg-white\/10:hover {
+  background-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Ensure colored background elements keep their white text & children white */
+[class*="bg-purple-600"], [class*="bg-purple-700"], [class*="bg-indigo-600"], [class*="bg-indigo-700"], [class*="bg-emerald-600"], [class*="bg-rose-600"], [class*="bg-red-600"], [class*="bg-amber-600"], [class*="bg-gradient-to-tr"] {
+  color: #ffffff !important;
+}
+
+[class*="bg-purple-600"] *, [class*="bg-purple-700"] *, [class*="bg-indigo-600"] *, [class*="bg-indigo-700"] *, [class*="bg-emerald-600"] *, [class*="bg-rose-600"] *, [class*="bg-red-600"] *, [class*="bg-amber-600"] * {
+  color: #ffffff !important;
+}
+
+/* Keep SVG line grids dark for visibility */
+svg line {
+  stroke: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Code area and terminal viewer styles for light mode */
+div.bg-\[\#010103\] {
+  background-color: #f8fafc !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 8px !important;
+}
+
+pre.bg-\[\#020204\] {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 8px !important;
+}
+
+.step-agent-thought {
+  background-color: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.step-tool-call span.text-purple-300 {
+  color: #4f8dfc !important;
+}
+
+.step-tool-output {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+/* ==========================================
+   Cornflower Blue Accent Custom Class Overrides 
+   ========================================== */
+.text-purple-300, .text-purple-400, .text-purple-500, .text-purple-600, .text-indigo-400, .text-indigo-500, .text-indigo-600, .text-gradient-purple {
+  color: #4f8dfc !important;
+  background: none !important;
+  -webkit-background-clip: unset !important;
+  -webkit-text-fill-color: unset !important;
+}
+
+.bg-purple-50 {
+  background-color: #f0f6ff !important;
+}
+
+.bg-purple-950\/5 {
+  background-color: rgba(79, 141, 252, 0.03) !important;
+}
+
+.bg-purple-600 {
+  background-color: #4f8dfc !important;
+}
+
+.bg-purple-700 {
+  background-color: #1e6ffd !important;
+}
+
+.hover\:bg-purple-700:hover {
+  background-color: #1e6ffd !important;
+}
+
+.hover\:bg-purple-600:hover {
+  background-color: #4f8dfc !important;
+}
+
+.bg-purple-600\/20 {
+  background-color: rgba(79, 141, 252, 0.1) !important;
+}
+
+.bg-purple-600\/30 {
+  background-color: rgba(79, 141, 252, 0.15) !important;
+}
+
+.border-purple-600, .border-purple-500, .border-purple-500\/20, .border-indigo-500\/20, .border-purple-500\/10 {
+  border-color: rgba(79, 141, 252, 0.2) !important;
+}
+
+.shadow-purple-500\/20, .shadow-purple-500\/10 {
+  box-shadow: 0 4px 12px 0 rgba(79, 141, 252, 0.12) !important;
+}
+
+.text-purple-700 {
+  color: #1e6ffd !important;
+}
+
+.nav-link-active {
+  color: #4f8dfc !important;
+  border-left-color: #4f8dfc !important;
+  background: linear-gradient(90deg, rgba(79, 141, 252, 0.04) 0%, rgba(0, 0, 0, 0) 100%) !important;
+}
+
+aside .bg-purple-50 {
+  background-color: #f0f6ff !important;
+  border-left-color: #4f8dfc !important;
+  color: #4f8dfc !important;
+}
+
+aside .bg-purple-50 svg {
+  color: #4f8dfc !important;
+}
+
+aside .text-purple-600 {
+  color: #4f8dfc !important;
+}
+
+/* Fix brand Σ icon container layout */
+aside .bg-gradient-to-tr.from-purple-600.to-indigo-500 {
+  background-image: linear-gradient(to top right, #4f8dfc, #1e6ffd) !important;
+}
+
+/* Make sure active navigation link text maps to cornflower blue */
+.nav-link-active {
+  color: #4f8dfc !important;
+}

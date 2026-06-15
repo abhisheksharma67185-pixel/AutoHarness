@@ -1,0 +1,41 @@
+{
+    "id": "0972d2b4-0b9e-4444-9dd9-c71144ea808e",
+    "started_at": "2026-06-15T03:56:20.642229",
+    "updated_at": "2026-06-15T03:56:23.284813",
+    "finished_at": "2026-06-15T03:56:23.284813",
+    "n_total_trials": 5,
+    "stats": {
+        "n_completed_trials": 5,
+        "n_errored_trials": 5,
+        "n_running_trials": 0,
+        "n_pending_trials": 0,
+        "n_cancelled_trials": 0,
+        "n_retries": 0,
+        "evals": {
+            "oracle__terminal-bench": {
+                "n_trials": 0,
+                "n_errors": 5,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "pass_at_k": {},
+                "reward_stats": {},
+                "exception_stats": {
+                    "RuntimeError": [
+                        "winning-avg-corewars__XjCSj4v",
+                        "pypi-server__UmdgiWL",
+                        "adaptive-rejection-sampler__HDCo3oA",
+                        "extract-moves-from-video__DEW5qH4",
+                        "make-mips-interpreter__MLo8vUZ"
+                    ]
+                }
+            }
+        },
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null
+    }
+}

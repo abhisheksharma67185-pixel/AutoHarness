@@ -1,0 +1,11 @@
+{
+  "dataset": "terminal-bench@2.0",
+  "agent": "oracle",
+  "harness_version": "harbor-0.13.2",
+  "label": "Sample Harbor dev fixture run",
+  "total_trials": 3,
+  "passed": 2,
+  "failed": 1,
+  "pass_rate": 0.6667,
+  "created_at": "2024-06-14T10:00:00Z"
+}

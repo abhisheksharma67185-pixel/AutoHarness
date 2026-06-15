@@ -1,0 +1,12 @@
+dataset: terminal-bench@2.0
+agent: oracle
+n_concurrent: 1
+label: "Dev terminal-bench run (oracle, no API key)"
+
+# Harbor job config for local dev testing
+# Run with: harbor run --config harness/configs/terminal_bench_dev.yaml --jobs-dir ./backend/harbor_jobs
+#
+# Requirements:
+#   - Docker running
+#   - harbor installed: pip install harbor
+#   - No API key required for 'oracle' agent

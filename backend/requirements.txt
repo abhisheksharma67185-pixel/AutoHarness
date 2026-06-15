@@ -1,0 +1,23 @@
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# Database (SQLAlchemy async + drivers)
+sqlalchemy[asyncio]>=2.0.0
+aiosqlite>=0.20.0          # SQLite fallback for local dev (zero-setup)
+asyncpg>=0.29.0            # Postgres async driver (used when DATABASE_URL=postgresql+asyncpg://...)
+alembic>=1.13.0
+
+# Config
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+
+# HTTP client (LLM calls, outbound requests)
+httpx>=0.28.0
+
+# Utilities
+orjson>=3.10.0             # fast JSON serialization
+python-dateutil>=2.9.0
+structlog>=24.0.0          # structured logging

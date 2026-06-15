@@ -1,0 +1,110 @@
+{
+    "id": "10693fb6-72ee-49e1-b1f8-8eb23ebb660e",
+    "task_name": "sqlite-db-truncate",
+    "trial_name": "sqlite-db-truncate__9FZPdZC",
+    "trial_uri": "file:///Users/abhisheksharma/Projects/AutoHarness-Studio/backend/harbor_jobs/retest-docker-fix/2026-06-15__10-53-24/sqlite-db-truncate__9FZPdZC",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "sqlite-db-truncate"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "2346f11dbe5b7bad30e9a9bcb27e5276a73f324d62c452d898e4ce0e472583b1",
+    "config": {
+        "task": {
+            "path": "sqlite-db-truncate",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "sqlite-db-truncate__9FZPdZC",
+        "trials_dir": "harbor_jobs/retest-docker-fix/2026-06-15__10-53-24",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "oracle",
+            "import_path": null,
+            "model_name": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "env": {},
+            "mcp_servers": []
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "env": {},
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "env": {},
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "job_id": "5e323748-2157-4b9b-b57e-18c54c459ab9"
+    },
+    "agent_info": {
+        "name": "oracle",
+        "version": "1.0.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-06-15T05:24:45.078172Z",
+    "finished_at": "2026-06-15T05:25:45.292568Z",
+    "environment_setup": {
+        "started_at": "2026-06-15T05:24:45.079473Z",
+        "finished_at": "2026-06-15T05:24:57.802485Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-06-15T05:24:57.802546Z",
+        "finished_at": "2026-06-15T05:24:57.802596Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-06-15T05:24:57.802686Z",
+        "finished_at": "2026-06-15T05:24:58.546985Z"
+    },
+    "verifier": {
+        "started_at": "2026-06-15T05:24:58.811386Z",
+        "finished_at": "2026-06-15T05:25:34.687971Z"
+    },
+    "step_results": null
+}
