@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid failure_mode_id format', { field: 'failure_mode_id' }, 400);
     }
 
-    const failures = db.prepare(`
+    const failures = await db.prepare(`
       SELECT fl.id as failure_label_id, fl.run_task_id, rt.run_id, fl.diagnosis_text, fl.taxonomy_primary, rt.score,
              bt.title as task_title, fmm.distance as distance_from_centroid
       FROM failure_mode_members fmm

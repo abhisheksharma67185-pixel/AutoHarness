@@ -59,19 +59,19 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
   }
 
   // Synchronous database transaction
-  const runIngestionTransaction = db.transaction(() => {
+  const runIngestionTransaction = db.transaction(async () => {
     // 1. Resolve or create benchmark record
     const benchSlug = metadata.benchmark_slug || 'terminal_bench_2';
     const benchName = metadata.benchmark || 'Terminal-Bench 2.0';
     const benchDesc = metadata.benchmark_description || 'Terminal operations benchmark for agent evaluation.';
     const benchUrl = metadata.benchmark_source_url || '';
 
-    db.prepare(`
+    await db.prepare(`
       INSERT OR IGNORE INTO benchmarks (name, slug, description, source_url)
       VALUES (?, ?, ?, ?)
     `).run(benchName, benchSlug, benchDesc, benchUrl);
 
-    const benchmarkRow = db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchSlug) as any;
+    const benchmarkRow = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchSlug) as any;
     const benchmarkId = benchmarkRow.id;
 
     // 2. Resolve or create harness version
@@ -79,19 +79,19 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
     const harnessConfig = JSON.stringify(metadata.harness_config || { agent_model: metadata.agent || 'SigmaAgent' });
     const harnessNotes = metadata.harness_notes || 'Auto-registered during ingestion';
 
-    db.prepare(`
+    await db.prepare(`
       INSERT OR IGNORE INTO harness_versions (name, config, notes)
       VALUES (?, ?, ?)
     `).run(harnessName, harnessConfig, harnessNotes);
 
-    const harnessRow = db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(harnessName) as any;
+    const harnessRow = await db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(harnessName) as any;
     const harnessVersionId = harnessRow.id;
 
     // 3. Delete existing run to keep ingestion idempotent (clean cascading delete)
-    db.prepare('DELETE FROM runs WHERE id = ?').run(run_id);
+    await db.prepare('DELETE FROM runs WHERE id = ?').run(run_id);
 
     // 4. Insert runs baseline record
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO runs (id, benchmark_id, agent_name, harness_version_id, run_label, metrics, raw_artifact_uri, global_score)
       VALUES (?, ?, ?, ?, ?, '{}', ?, 0.0)
     `).run(
@@ -112,7 +112,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
     // 5. Ingest tasks and steps
     for (const t of tasks) {
       // Register task definition
-      db.prepare(`
+      await db.prepare(`
         INSERT OR IGNORE INTO benchmark_tasks (benchmark_id, task_id, title, category, difficulty, metadata)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(
@@ -124,7 +124,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
         JSON.stringify({ description: t.description })
       );
 
-      const taskRow = db.prepare('SELECT id FROM benchmark_tasks WHERE benchmark_id = ? AND task_id = ?').get(benchmarkId, t.task_id) as any;
+      const taskRow = await db.prepare('SELECT id FROM benchmark_tasks WHERE benchmark_id = ? AND task_id = ?').get(benchmarkId, t.task_id) as any;
       const benchmarkTaskId = taskRow.id;
 
       const isPass = t.success === true || t.score >= 1.0;
@@ -141,7 +141,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
       categoryScores[t.category].count += 1;
 
       // Save execution details
-      const runTaskResult = db.prepare(`
+      const runTaskResult = await db.prepare(`
         INSERT INTO run_tasks (run_id, benchmark_task_id, status, score, raw_result)
         VALUES (?, ?, ?, ?, ?)
       `).run(run_id, benchmarkTaskId, status, t.score, JSON.stringify(t));
@@ -158,7 +158,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
           else if (originalType === 'tool_call' || originalType === 'command') stepType = 'TOOL_CALL';
           else if (originalType === 'tool_output' || originalType === 'stdout' || originalType === 'stderr') stepType = 'TOOL_RESULT';
 
-          db.prepare(`
+          await db.prepare(`
             INSERT INTO trace_steps (run_task_id, step_index, step_type, content, metadata)
             VALUES (?, ?, ?, ?, ?)
           `).run(
@@ -178,7 +178,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
           taxonomy_label: 'OTHER'
         };
 
-        const labelResult = db.prepare(`
+        const labelResult = await db.prepare(`
           INSERT INTO failure_labels (run_task_id, is_failure, source, score, diagnosis_text, taxonomy_primary, taxonomy_secondary)
           VALUES (?, 1, 'BENCHMARK', NULL, ?, ?, '[]')
         `).run(runTaskId, preFetched.diagnosis_text, preFetched.taxonomy_label);
@@ -206,7 +206,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
 
     for (const cluster of clusters) {
       // Create failure mode linked to benchmark
-      const fmResult = db.prepare(`
+      const fmResult = await db.prepare(`
         INSERT INTO failure_modes (benchmark_id, name, description, taxonomy_primary, stats)
         VALUES (?, ?, ?, ?, '{}')
       `).run(benchmarkId, cluster.title, cluster.description, cluster.taxonomy_label);
@@ -216,7 +216,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
       for (const memberId of cluster.memberIds) {
         const taskObj = failedTasksForClustering.find(f => f.id === memberId);
         if (taskObj) {
-          db.prepare(`
+          await db.prepare(`
             INSERT OR IGNORE INTO failure_mode_members (failure_mode_id, failure_label_id, distance)
             VALUES (?, ?, 0.0)
           `).run(failureModeId, taskObj.label_id);
@@ -247,14 +247,14 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
     };
 
     // Save overall score to runs
-    db.prepare(`
+    await db.prepare(`
       UPDATE runs 
       SET global_score = ?, metrics = ? 
       WHERE id = ?
     `).run(passRate, JSON.stringify(metricsObj), run_id);
   });
 
-  runIngestionTransaction();
+  await runIngestionTransaction();
 
   // Replicate to backend/dev.db to avoid database divergence
   const devDbPath = path.join(process.cwd(), 'backend', 'dev.db');
@@ -453,7 +453,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
   return { success: true, run_id, ingested_tasks: tasks.length };
 }
 
-export function syncRunDevToLocal(runId: string): boolean {
+export async function syncRunDevToLocal(runId: string): Promise<boolean> {
   const devDbPath = path.join(process.cwd(), 'backend', 'dev.db');
   let devDb: Database.Database | null = null;
   try {
@@ -470,20 +470,20 @@ export function syncRunDevToLocal(runId: string): boolean {
     }
 
     // Check if already in autoharness.db
-    const existing = db.prepare('SELECT id FROM runs WHERE id = ?').get(runId);
+    const existing = await db.prepare('SELECT id FROM runs WHERE id = ?').get(runId);
     if (existing) {
       return true;
     }
 
     // Perform sync within transaction
-    const syncTx = db.transaction(() => {
+    const syncTx = db.transaction(async () => {
       // Resolve benchmark
       let benchmarkId = 0;
-      const benchRow = db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(runDev.benchmark_slug) as any;
+      const benchRow = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(runDev.benchmark_slug) as any;
       if (benchRow) {
         benchmarkId = benchRow.id;
       } else {
-        const insertBench = db.prepare(`
+        const insertBench = await db.prepare(`
           INSERT INTO benchmarks (name, slug, description, source_url)
           VALUES (?, ?, ?, ?)
         `).run(
@@ -497,11 +497,11 @@ export function syncRunDevToLocal(runId: string): boolean {
 
       // Resolve harness version
       let harnessVersionId = 0;
-      const hvRow = db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(runDev.harness_version) as any;
+      const hvRow = await db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(runDev.harness_version) as any;
       if (hvRow) {
         harnessVersionId = hvRow.id;
       } else {
-        const insertHv = db.prepare(`
+        const insertHv = await db.prepare(`
           INSERT INTO harness_versions (name, config, notes)
           VALUES (?, ?, ?)
         `).run(
@@ -513,7 +513,7 @@ export function syncRunDevToLocal(runId: string): boolean {
       }
 
       // Insert run
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO runs (id, benchmark_id, agent_name, harness_version_id, run_label, metrics, raw_artifact_uri, global_score, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
@@ -533,7 +533,7 @@ export function syncRunDevToLocal(runId: string): boolean {
 
       for (const tDev of tasksDev) {
         // Insert benchmark task
-        db.prepare(`
+        await db.prepare(`
           INSERT OR IGNORE INTO benchmark_tasks (benchmark_id, task_id, title, category, difficulty, metadata)
           VALUES (?, ?, ?, ?, ?, ?)
         `).run(
@@ -545,11 +545,11 @@ export function syncRunDevToLocal(runId: string): boolean {
           JSON.stringify({ description: tDev.raw_task_json ? JSON.parse(tDev.raw_task_json).description || '' : '' })
         );
 
-        const btRow = db.prepare('SELECT id FROM benchmark_tasks WHERE benchmark_id = ? AND task_id = ?').get(benchmarkId, tDev.benchmark_task_id) as any;
+        const btRow = await db.prepare('SELECT id FROM benchmark_tasks WHERE benchmark_id = ? AND task_id = ?').get(benchmarkId, tDev.benchmark_task_id) as any;
         const benchmarkTaskId = btRow.id;
 
         // Insert run task
-        const insertRt = db.prepare(`
+        const insertRt = await db.prepare(`
           INSERT INTO run_tasks (run_id, benchmark_task_id, status, score, raw_result, started_at, finished_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run(
@@ -566,7 +566,7 @@ export function syncRunDevToLocal(runId: string): boolean {
         // Fetch steps
         const stepsDev = devDb!.prepare('SELECT * FROM trace_steps WHERE run_task_id = ?').all(tDev.id) as any[];
         for (const sDev of stepsDev) {
-          db.prepare(`
+          await db.prepare(`
             INSERT INTO trace_steps (run_task_id, step_index, step_type, content, metadata)
             VALUES (?, ?, ?, ?, ?)
           `).run(
@@ -581,7 +581,7 @@ export function syncRunDevToLocal(runId: string): boolean {
         // Fetch failure label
         const flDev = devDb!.prepare('SELECT * FROM failure_labels WHERE run_task_id = ?').get(tDev.id) as any;
         if (flDev) {
-          db.prepare(`
+          await db.prepare(`
             INSERT INTO failure_labels (run_task_id, is_failure, source, score, diagnosis_text, taxonomy_primary, taxonomy_secondary)
             VALUES (?, 1, 'BENCHMARK', NULL, ?, ?, '[]')
           `).run(
@@ -593,7 +593,7 @@ export function syncRunDevToLocal(runId: string): boolean {
       }
     });
 
-    syncTx();
+    await syncTx();
     return true;
   } catch (err) {
     console.error('Error syncing run from dev.db to autoharness.db:', err);
@@ -641,11 +641,11 @@ function mapVariantStatus(status: string): string {
   return 'PLANNED';
 }
 
-export function syncExperimentsDevToLocal(experimentId?: string): boolean {
+export async function syncExperimentsDevToLocal(experimentId?: string): Promise<boolean> {
   // Sync dependencies first to ensure referenced runs/suites exist locally
   try {
-    syncEvalSuitesDevToLocal();
-    syncEvalRunsDevToLocal();
+    await syncEvalSuitesDevToLocal();
+    await syncEvalRunsDevToLocal();
   } catch (depErr) {
     console.error('Failed to sync dependencies for experiments sync:', depErr);
   }
@@ -672,17 +672,17 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
       return true;
     }
 
-    const syncTx = db.transaction(() => {
+    const syncTx = db.transaction(async () => {
       for (const expDev of experimentsDev) {
         const localExpId = stringToIntegerId(expDev.id);
 
         // Resolve benchmark
         let benchmarkId = 0;
-        const benchRow = db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(expDev.benchmark_slug) as any;
+        const benchRow = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(expDev.benchmark_slug) as any;
         if (benchRow) {
           benchmarkId = benchRow.id;
         } else {
-          const insertBench = db.prepare(`
+          const insertBench = await db.prepare(`
             INSERT INTO benchmarks (name, slug, description, source_url)
             VALUES (?, ?, ?, ?)
           `).run(
@@ -696,11 +696,11 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
 
         // Resolve base harness version
         let baseHarnessVersionId = 0;
-        const hvRow = db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(expDev.base_harness_version_id) as any;
+        const hvRow = await db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(expDev.base_harness_version_id) as any;
         if (hvRow) {
           baseHarnessVersionId = hvRow.id;
         } else {
-          const insertHv = db.prepare(`
+          const insertHv = await db.prepare(`
             INSERT INTO harness_versions (name, config, notes)
             VALUES (?, ?, ?)
           `).run(
@@ -712,18 +712,18 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
         }
 
         // Ensure dummy/fallback eval_suite and eval_run exist to satisfy foreign key constraints
-        db.prepare(`
+        await db.prepare(`
           INSERT OR IGNORE INTO eval_suites (id, name, benchmark_id, description)
           VALUES (999999, 'Fallback Suite', ?, 'Fallback Suite for unresolved references')
         `).run(benchmarkId);
 
-        db.prepare(`
+        await db.prepare(`
           INSERT OR IGNORE INTO eval_runs (id, eval_suite_id, harness_version_id, status, metrics)
           VALUES (999999, 999999, ?, 'COMPLETED', '{}')
         `).run(baseHarnessVersionId);
 
         // Insert or replace experiment
-        db.prepare(`
+        await db.prepare(`
           INSERT OR REPLACE INTO experiments (id, name, benchmark_id, base_harness_version_id, target_description, config_template, regression_policy, created_at)
           VALUES (?, ?, ?, ?, ?, '{}', ?, ?)
         `).run(
@@ -737,7 +737,7 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
         );
 
         // Sync targets
-        db.prepare('DELETE FROM experiment_targets WHERE experiment_id = ?').run(localExpId);
+        await db.prepare('DELETE FROM experiment_targets WHERE experiment_id = ?').run(localExpId);
         let targetsArr: any[] = [];
         if (expDev.targets) {
           try {
@@ -748,7 +748,7 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
           for (const t of targetsArr) {
             const typeStr = (t.type || t.target_type || '').toUpperCase();
             const targetIdInt = stringToIntegerId(t.id || t.target_id);
-            db.prepare(`
+            await db.prepare(`
               INSERT INTO experiment_targets (experiment_id, target_type, target_id, desired_delta)
               VALUES (?, ?, ?, ?)
             `).run(localExpId, typeStr, targetIdInt, t.desired_delta || 0.0);
@@ -757,18 +757,18 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
 
         // Sync variants
         const variantsDev = devDb!.prepare('SELECT * FROM experiment_variants WHERE experiment_id = ?').all(expDev.id) as any[];
-        db.prepare('DELETE FROM experiment_variants WHERE experiment_id = ?').run(localExpId);
+        await db.prepare('DELETE FROM experiment_variants WHERE experiment_id = ?').run(localExpId);
         
         for (const vDev of variantsDev) {
           const localVarId = stringToIntegerId(vDev.id);
 
           // Resolve harness version id for variant
           let variantHarnessVersionId = 0;
-          const varHvRow = db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(vDev.harness_version_id) as any;
+          const varHvRow = await db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(vDev.harness_version_id) as any;
           if (varHvRow) {
             variantHarnessVersionId = varHvRow.id;
           } else {
-            const insertVarHv = db.prepare(`
+            const insertVarHv = await db.prepare(`
               INSERT INTO harness_versions (name, config, notes)
               VALUES (?, ?, ?)
             `).run(
@@ -779,7 +779,7 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
             variantHarnessVersionId = Number(insertVarHv.lastInsertRowid);
           }
 
-          db.prepare(`
+          await db.prepare(`
             INSERT OR REPLACE INTO experiment_variants (id, experiment_id, harness_version_id, variant_label, config_diff, exported_config_uri, status)
             VALUES (?, ?, ?, ?, ?, ?, ?)
           `).run(
@@ -800,7 +800,7 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
             } catch {}
           }
 
-          db.prepare('DELETE FROM experiment_variant_eval_summaries WHERE experiment_variant_id = ?').run(localVarId);
+          await db.prepare('DELETE FROM experiment_variant_eval_summaries WHERE experiment_variant_id = ?').run(localVarId);
 
           const targetMetrics = metricsObj.targets || [];
           const guardMetrics = metricsObj.guards || [];
@@ -834,7 +834,7 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
               }
             } catch {}
 
-            db.prepare(`
+            await db.prepare(`
               INSERT OR REPLACE INTO experiment_variant_eval_summaries (experiment_variant_id, eval_suite_id, baseline_eval_run_id, variant_eval_run_id, delta_pass_rate, regression_flag)
               VALUES (?, ?, ?, ?, ?, ?)
             `).run(
@@ -876,7 +876,7 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
               }
             } catch {}
 
-            db.prepare(`
+            await db.prepare(`
               INSERT OR REPLACE INTO experiment_variant_eval_summaries (experiment_variant_id, eval_suite_id, baseline_eval_run_id, variant_eval_run_id, delta_pass_rate, regression_flag)
               VALUES (?, ?, ?, ?, ?, ?)
             `).run(
@@ -892,7 +892,7 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
       }
     });
 
-    syncTx();
+    await syncTx();
     return true;
   } catch (err) {
     console.error('Error syncing experiments from dev.db to autoharness.db:', err);
@@ -904,7 +904,7 @@ export function syncExperimentsDevToLocal(experimentId?: string): boolean {
   }
 }
 
-export function syncEvalSuitesDevToLocal(evalSuiteId?: string): boolean {
+export async function syncEvalSuitesDevToLocal(evalSuiteId?: string): Promise<boolean> {
   const devDbPath = path.join(process.cwd(), 'backend', 'dev.db');
   let devDb: Database.Database | null = null;
   try {
@@ -927,17 +927,17 @@ export function syncEvalSuitesDevToLocal(evalSuiteId?: string): boolean {
       return true;
     }
 
-    const syncTx = db.transaction(() => {
+    const syncTx = db.transaction(async () => {
       for (const sDev of suitesDev) {
         const localSuiteId = stringToIntegerId(sDev.id);
 
         // Resolve benchmark
         let benchmarkId = 0;
-        const benchRow = db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(sDev.benchmark_slug) as any;
+        const benchRow = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(sDev.benchmark_slug) as any;
         if (benchRow) {
           benchmarkId = benchRow.id;
         } else {
-          const insertBench = db.prepare(`
+          const insertBench = await db.prepare(`
             INSERT INTO benchmarks (name, slug, description, source_url)
             VALUES (?, ?, ?, ?)
           `).run(
@@ -950,7 +950,7 @@ export function syncEvalSuitesDevToLocal(evalSuiteId?: string): boolean {
         }
 
         // Insert or replace eval suite
-        db.prepare(`
+        await db.prepare(`
           INSERT OR REPLACE INTO eval_suites (id, name, benchmark_id, description, created_at)
           VALUES (?, ?, ?, ?, ?)
         `).run(
@@ -964,18 +964,18 @@ export function syncEvalSuitesDevToLocal(evalSuiteId?: string): boolean {
         // Fetch eval cases for this suite from devDb
         const casesDev = devDb!.prepare('SELECT * FROM eval_cases WHERE eval_suite_id = ?').all(sDev.id) as any[];
         
-        db.prepare('DELETE FROM eval_suite_members WHERE eval_suite_id = ?').run(localSuiteId);
+        await db.prepare('DELETE FROM eval_suite_members WHERE eval_suite_id = ?').run(localSuiteId);
 
         for (const cDev of casesDev) {
           const localCaseId = stringToIntegerId(cDev.id);
 
           // Resolve benchmark task id locally using the benchmark_task_id string slug
           let localBtId: number | null = null;
-          const btRow = db.prepare('SELECT id FROM benchmark_tasks WHERE benchmark_id = ? AND task_id = ?').get(benchmarkId, cDev.benchmark_task_id) as any;
+          const btRow = await db.prepare('SELECT id FROM benchmark_tasks WHERE benchmark_id = ? AND task_id = ?').get(benchmarkId, cDev.benchmark_task_id) as any;
           if (btRow) {
             localBtId = btRow.id;
           } else {
-            const insertBt = db.prepare(`
+            const insertBt = await db.prepare(`
               INSERT OR IGNORE INTO benchmark_tasks (benchmark_id, task_id, title, category, difficulty, metadata)
               VALUES (?, ?, ?, ?, ?, ?)
             `).run(
@@ -986,7 +986,7 @@ export function syncEvalSuitesDevToLocal(evalSuiteId?: string): boolean {
               'medium',
               JSON.stringify({ description: cDev.input_spec ? (typeof cDev.input_spec === 'string' ? JSON.parse(cDev.input_spec).original_instructions : cDev.input_spec.original_instructions) || '' : '' })
             );
-            const getBt = db.prepare('SELECT id FROM benchmark_tasks WHERE benchmark_id = ? AND task_id = ?').get(benchmarkId, cDev.benchmark_task_id) as any;
+            const getBt = await db.prepare('SELECT id FROM benchmark_tasks WHERE benchmark_id = ? AND task_id = ?').get(benchmarkId, cDev.benchmark_task_id) as any;
             if (getBt) localBtId = getBt.id;
           }
 
@@ -994,14 +994,14 @@ export function syncEvalSuitesDevToLocal(evalSuiteId?: string): boolean {
           let localFlId: number | null = null;
           if (cDev.failure_label_id) {
             const potentialFlId = stringToIntegerId(cDev.failure_label_id);
-            const exists = db.prepare('SELECT id FROM failure_labels WHERE id = ?').get(potentialFlId);
+            const exists = await db.prepare('SELECT id FROM failure_labels WHERE id = ?').get(potentialFlId);
             if (exists) {
               localFlId = potentialFlId;
             }
           }
 
           // Insert or replace eval case
-          db.prepare(`
+          await db.prepare(`
             INSERT OR REPLACE INTO eval_cases (id, benchmark_task_id, failure_label_id, input_spec, expected_spec, scoring_config, created_by, created_at)
             VALUES (?, ?, ?, ?, ?, '{}', 'MANUAL', ?)
           `).run(
@@ -1014,7 +1014,7 @@ export function syncEvalSuitesDevToLocal(evalSuiteId?: string): boolean {
           );
 
           // Link in eval_suite_members
-          db.prepare(`
+          await db.prepare(`
             INSERT OR IGNORE INTO eval_suite_members (eval_suite_id, eval_case_id)
             VALUES (?, ?)
           `).run(localSuiteId, localCaseId);
@@ -1022,7 +1022,7 @@ export function syncEvalSuitesDevToLocal(evalSuiteId?: string): boolean {
       }
     });
 
-    syncTx();
+    await syncTx();
     return true;
   } catch (err) {
     console.error('Error syncing eval suites from dev.db to autoharness.db:', err);
@@ -1034,7 +1034,7 @@ export function syncEvalSuitesDevToLocal(evalSuiteId?: string): boolean {
   }
 }
 
-export function syncEvalRunsDevToLocal(evalRunId?: string): boolean {
+export async function syncEvalRunsDevToLocal(evalRunId?: string): Promise<boolean> {
   const devDbPath = path.join(process.cwd(), 'backend', 'dev.db');
   let devDb: Database.Database | null = null;
   try {
@@ -1057,23 +1057,23 @@ export function syncEvalRunsDevToLocal(evalRunId?: string): boolean {
       return true;
     }
 
-    const syncTx = db.transaction(() => {
+    const syncTx = db.transaction(async () => {
       for (const rDev of runsDev) {
         const localRunId = stringToIntegerId(rDev.id);
         const localSuiteId = stringToIntegerId(rDev.eval_suite_id);
 
-        const existsSuite = db.prepare('SELECT id FROM eval_suites WHERE id = ?').get(localSuiteId);
+        const existsSuite = await db.prepare('SELECT id FROM eval_suites WHERE id = ?').get(localSuiteId);
         if (!existsSuite) {
           continue; // Skip if suite doesn't exist locally to prevent FK failure
         }
 
         // Resolve harness version name from dev database
         let localHvId = 0;
-        const hvRow = db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(rDev.harness_version_id) as any;
+        const hvRow = await db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(rDev.harness_version_id) as any;
         if (hvRow) {
           localHvId = hvRow.id;
         } else {
-          const insertHv = db.prepare(`
+          const insertHv = await db.prepare(`
             INSERT INTO harness_versions (name, config, notes)
             VALUES (?, ?, ?)
           `).run(
@@ -1085,7 +1085,7 @@ export function syncEvalRunsDevToLocal(evalRunId?: string): boolean {
         }
 
         // Insert or replace eval run
-        db.prepare(`
+        await db.prepare(`
           INSERT OR REPLACE INTO eval_runs (id, eval_suite_id, harness_version_id, run_id, status, metrics, created_at, finished_at)
           VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
         `).run(
@@ -1101,16 +1101,16 @@ export function syncEvalRunsDevToLocal(evalRunId?: string): boolean {
         // Fetch results from devDb table: eval_run_results
         const resultsDev = devDb!.prepare('SELECT * FROM eval_run_results WHERE eval_run_id = ?').all(rDev.id) as any[];
 
-        db.prepare('DELETE FROM eval_results WHERE eval_run_id = ?').run(localRunId);
+        await db.prepare('DELETE FROM eval_results WHERE eval_run_id = ?').run(localRunId);
 
         for (const resDev of resultsDev) {
           const localCaseId = stringToIntegerId(resDev.eval_case_id);
-          const existsCase = db.prepare('SELECT id FROM eval_cases WHERE id = ?').get(localCaseId);
+          const existsCase = await db.prepare('SELECT id FROM eval_cases WHERE id = ?').get(localCaseId);
           if (!existsCase) {
             continue; // Skip result if case doesn't exist locally to prevent FK failure
           }
 
-          db.prepare(`
+          await db.prepare(`
             INSERT OR REPLACE INTO eval_results (eval_run_id, eval_case_id, status, score, raw_output, judge_metadata)
             VALUES (?, ?, ?, ?, ?, ?)
           `).run(
@@ -1125,7 +1125,7 @@ export function syncEvalRunsDevToLocal(evalRunId?: string): boolean {
       }
     });
 
-    syncTx();
+    await syncTx();
     return true;
   } catch (err) {
     console.error('Error syncing eval runs from dev.db to autoharness.db:', err);

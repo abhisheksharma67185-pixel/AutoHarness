@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid eval_run_id format', { field: 'eval_run_id' }, 400);
     }
 
-    let er = db.prepare(`
+    let er = await db.prepare(`
       SELECT er.id, er.eval_suite_id, er.harness_version_id, er.status, er.metrics,
              hv.name as harness_version_name
       FROM eval_runs er
@@ -33,8 +33,8 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (!er) {
       try {
         const { syncEvalRunsDevToLocal } = await import('@/lib/ingest-helper');
-        syncEvalRunsDevToLocal();
-        er = db.prepare(`
+        await syncEvalRunsDevToLocal();
+        er = await db.prepare(`
           SELECT er.id, er.eval_suite_id, er.harness_version_id, er.status, er.metrics,
                  hv.name as harness_version_name
           FROM eval_runs er

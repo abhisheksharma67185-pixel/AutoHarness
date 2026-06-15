@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
       const cleanExpId = experiment_id.startsWith('exp') ? experiment_id.slice(3) : experiment_id;
       const expId = parseInt(cleanExpId, 10);
 
-      const expRow = db.prepare(`
+      const expRow = await db.prepare(`
         SELECT e.id, e.name, e.target_description, e.base_harness_version_id, b.slug as benchmark_slug, e.regression_policy
         FROM experiments e
         JOIN benchmarks b ON e.benchmark_id = b.id
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Experiment not found' }, { status: 404 });
       }
 
-      const targetRows = db.prepare(`
+      const targetRows = await db.prepare(`
         SELECT target_type as type, target_id as id, desired_delta
         FROM experiment_targets
         WHERE experiment_id = ?
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
         regression_policy: JSON.parse(expRow.regression_policy || '{}'),
       };
 
-      const varRows = db.prepare(`
+      const varRows = await db.prepare(`
         SELECT ev.id, ev.variant_label, ev.status, ev.config_diff, hv.name as harness_version_id
         FROM experiment_variants ev
         LEFT JOIN harness_versions hv ON ev.harness_version_id = hv.id
@@ -105,16 +105,17 @@ guardrails:
       return NextResponse.json({ experiment, variants });
     }
 
-    const expRows = db.prepare(`
+    const expRows = await db.prepare(`
       SELECT e.id, e.name, e.target_description, b.slug as benchmark_slug, e.base_harness_version_id, e.regression_policy
       FROM experiments e
       JOIN benchmarks b ON e.benchmark_id = b.id
       ORDER BY e.id ASC
     `).all() as any[];
 
-    const experiments = expRows.map(e => {
-      const targets = db.prepare('SELECT target_type, target_id FROM experiment_targets WHERE experiment_id = ?').all(e.id) as any[];
-      return {
+    const experiments = [];
+    for (const e of expRows) {
+      const targets = await db.prepare('SELECT target_type, target_id FROM experiment_targets WHERE experiment_id = ?').all(e.id) as any[];
+      experiments.push({
         id: e.id,
         name: e.name,
         target_description: e.target_description,
@@ -130,8 +131,8 @@ guardrails:
           id: t.target_id,
         })),
         regression_policy: JSON.parse(e.regression_policy || '{}'),
-      };
-    });
+      });
+    }
 
     return NextResponse.json({ experiments });
   } catch (err: any) {
@@ -339,7 +340,7 @@ export async function POST(req: NextRequest) {
       if (experimentId) {
         try {
           const { syncExperimentsDevToLocal } = await import('@/lib/ingest-helper');
-          syncExperimentsDevToLocal(experimentId);
+          await syncExperimentsDevToLocal(experimentId);
         } catch (syncErr) {
           console.error('Failed to sync new experiment to local DB:', syncErr);
         }
@@ -407,7 +408,7 @@ export async function POST(req: NextRequest) {
       if (experiment_id) {
         try {
           const { syncExperimentsDevToLocal } = await import('@/lib/ingest-helper');
-          syncExperimentsDevToLocal(experiment_id);
+          await syncExperimentsDevToLocal(experiment_id);
         } catch (syncErr) {
           console.error('Failed to sync experiment after link_run to local DB:', syncErr);
         }
@@ -444,7 +445,7 @@ export async function POST(req: NextRequest) {
       if (experiment_id) {
         try {
           const { syncExperimentsDevToLocal } = await import('@/lib/ingest-helper');
-          syncExperimentsDevToLocal(experiment_id);
+          await syncExperimentsDevToLocal(experiment_id);
         } catch (syncErr) {
           console.error('Failed to sync experiment variant to local DB:', syncErr);
         }

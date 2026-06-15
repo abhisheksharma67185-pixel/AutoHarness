@@ -56,10 +56,10 @@ export async function POST(req: NextRequest) {
 
     // Resolve benchmark and check duplicate
     let benchmarkId = 0;
-    const bench = db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
+    const bench = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
     if (bench) {
       benchmarkId = bench.id;
-      const existing = db.prepare('SELECT id FROM runs WHERE run_label = ? AND benchmark_id = ?').get(run_label, benchmarkId) as any;
+      const existing = await db.prepare('SELECT id FROM runs WHERE run_label = ? AND benchmark_id = ?').get(run_label, benchmarkId) as any;
       if (existing) {
         return sendError('DUPLICATE_RUN', 'A run with this label and benchmark already exists.', { existing_run_id: existing.id }, 409);
       }

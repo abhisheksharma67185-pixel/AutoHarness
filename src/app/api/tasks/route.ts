@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     // Case 1: Fetch single task detail with trace steps
     if (run_task_id) {
       try {
-        const task = db.prepare(`
+        const task = await db.prepare(`
           SELECT rt.*, bt.task_id as benchmark_task_id, bt.title as task_title, bt.category, bt.difficulty
           FROM run_tasks rt
           JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
           throw new Error('Task not found in SQLite');
         }
 
-        const fl = db.prepare('SELECT * FROM failure_labels WHERE run_task_id = ?').get(run_task_id) as any;
+        const fl = await db.prepare('SELECT * FROM failure_labels WHERE run_task_id = ?').get(run_task_id) as any;
         let desc = '';
         if (task.raw_result) {
           try {
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
           failure_label_id: fl ? fl.id : null
         };
 
-        const traceSteps = db.prepare('SELECT * FROM trace_steps WHERE run_task_id = ? ORDER BY step_index').all(run_task_id) as any[];
+        const traceSteps = await db.prepare('SELECT * FROM trace_steps WHERE run_task_id = ? ORDER BY step_index').all(run_task_id) as any[];
         const steps = traceSteps.map((s: any) => {
           let type = 'LOG';
           const st = (s.step_type || '').toUpperCase();
@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
       }
       query += ' ORDER BY rt.task_slug';
 
-      const rows = db.prepare(query).all(...params) as any[];
+      const rows = await db.prepare(query).all(...params) as any[];
       const tasks = rows.map((t: any) => {
         let desc = '';
         if (t.raw_result) {

@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Resolve benchmark
-    const bench = db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
+    const bench = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
     if (!bench) {
       return sendError('NOT_FOUND', `Benchmark not found with slug: ${benchmark_slug}`, { benchmark_slug }, 404);
     }
@@ -32,11 +32,11 @@ export async function POST(req: NextRequest) {
     if (harnessName.startsWith('hv-')) {
       harnessName = harnessName.slice(3);
     }
-    let hv = db.prepare('SELECT id, name FROM harness_versions WHERE name = ?').get(harnessName) as any;
+    let hv = await db.prepare('SELECT id, name FROM harness_versions WHERE name = ?').get(harnessName) as any;
     if (!hv) {
       const hvIdNum = parseInt(harnessName, 10);
       if (!isNaN(hvIdNum)) {
-        hv = db.prepare('SELECT id, name FROM harness_versions WHERE id = ?').get(hvIdNum) as any;
+        hv = await db.prepare('SELECT id, name FROM harness_versions WHERE id = ?').get(hvIdNum) as any;
       }
     }
 
@@ -44,9 +44,9 @@ export async function POST(req: NextRequest) {
       return sendError('NOT_FOUND', `Base harness version not found: ${base_harness_version_id}`, { base_harness_version_id }, 404);
     }
 
-    const expTx = db.transaction(() => {
+    const expTx = db.transaction(async () => {
       // 1. Insert Experiment
-      const expResult = db.prepare(`
+      const expResult = await db.prepare(`
         INSERT INTO experiments (name, benchmark_id, base_harness_version_id, target_description, config_template, regression_policy)
         VALUES (?, ?, ?, ?, '{}', ?)
       `).run(
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
 
           if (isNaN(targetIdNum)) continue;
 
-          db.prepare(`
+          await db.prepare(`
             INSERT INTO experiment_targets (experiment_id, target_type, target_id, desired_delta)
             VALUES (?, ?, ?, ?)
           `).run(experimentId, typeStr, targetIdNum, t.desired_delta);
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       return experimentId;
     });
 
-    const experimentId = expTx();
+    const experimentId = await expTx();
 
     return sendSuccess({
       experiment_id: `exp${experimentId}`
@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
   try {
     try {
       const { syncExperimentsDevToLocal } = await import('@/lib/ingest-helper');
-      syncExperimentsDevToLocal();
+      await syncExperimentsDevToLocal();
     } catch (syncErr) {
       console.error('Failed to lazy sync experiments on list:', syncErr);
     }
@@ -122,10 +122,11 @@ export async function GET(req: NextRequest) {
 
     query += ' ORDER BY e.id ASC';
 
-    const experiments = db.prepare(query).all(...sqlParams) as any[];
+    const experiments = await db.prepare(query).all(...sqlParams) as any[];
 
-    const formatted = experiments.map(e => {
-      const targets = db.prepare(`
+    const formatted = [];
+    for (const e of experiments) {
+      const targets = await db.prepare(`
         SELECT target_type, target_id, desired_delta
         FROM experiment_targets
         WHERE experiment_id = ?
@@ -141,7 +142,7 @@ export async function GET(req: NextRequest) {
         };
       });
 
-      return {
+      formatted.push({
         id: `exp${e.id}`,
         name: e.name,
         benchmark_slug: e.benchmark_slug,
@@ -149,8 +150,8 @@ export async function GET(req: NextRequest) {
         target_description: e.target_description || '',
         targets: formattedTargets,
         created_at: new Date(e.created_at || Date.now()).toISOString()
-      };
-    });
+      });
+    }
 
     return sendSuccess(formatted);
   } catch (err: any) {

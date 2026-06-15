@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve benchmark
-    const bench = db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmarkSlug) as any;
+    const bench = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmarkSlug) as any;
     if (!bench) {
       return sendSuccess([]); // Return empty list if benchmark slug doesn't exist
     }
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
 
     query += ' GROUP BY fm.id ORDER BY failure_count DESC';
 
-    const modes = db.prepare(query).all(...sqlParams) as any[];
+    const modes = await db.prepare(query).all(...sqlParams) as any[];
 
     const formatted = modes.map(m => {
       let versions: string[] = [];

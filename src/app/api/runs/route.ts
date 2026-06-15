@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     }
     query += ' ORDER BY r.created_at DESC';
 
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = await db.prepare(query).all(...params) as any[];
     const runs = rows.map(r => ({
       run_id: r.id,
       run_label: r.run_label,
@@ -95,7 +95,7 @@ export async function DELETE(req: NextRequest) {
 
     // Also delete from local autoharness.db to keep them in sync
     try {
-      db.prepare('DELETE FROM runs WHERE id = ?').run(run_id);
+      await db.prepare('DELETE FROM runs WHERE id = ?').run(run_id);
     } catch (dbErr: any) {
       console.error('Failed to delete run from local autoharness.db:', dbErr);
     }

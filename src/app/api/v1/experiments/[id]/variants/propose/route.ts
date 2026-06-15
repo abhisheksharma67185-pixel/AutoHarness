@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid experiment_id format', { field: 'experiment_id' }, 400);
     }
 
-    const exp = db.prepare('SELECT * FROM experiments WHERE id = ?').get(idNum) as any;
+    const exp = await db.prepare('SELECT * FROM experiments WHERE id = ?').get(idNum) as any;
     if (!exp) {
       return sendError('NOT_FOUND', `Experiment not found with ID: ${id}`, { experiment_id: id }, 404);
     }
@@ -36,12 +36,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     } catch {}
 
     // Get the targets failure modes
-    const targets = db.prepare('SELECT target_id FROM experiment_targets WHERE experiment_id = ? AND target_type = \'FAILURE_MODE\'').all(idNum) as any[];
+    const targets = await db.prepare('SELECT target_id FROM experiment_targets WHERE experiment_id = ? AND target_type = \'FAILURE_MODE\'').all(idNum) as any[];
 
     // Fetch target failure modes detail
     const failureModes: any[] = [];
     for (const t of targets) {
-      const fm = db.prepare('SELECT name as title, description, taxonomy_primary as taxonomy_label FROM failure_modes WHERE id = ?').get(t.target_id) as any;
+      const fm = await db.prepare('SELECT name as title, description, taxonomy_primary as taxonomy_label FROM failure_modes WHERE id = ?').get(t.target_id) as any;
       if (fm) failureModes.push(fm);
     }
 
@@ -58,13 +58,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     const proposals = await proposeHarnessFixes(failureModes);
 
     // Get base harness name
-    const baseHarness = db.prepare('SELECT name FROM harness_versions WHERE id = ?').get(exp.base_harness_version_id) as any;
+    const baseHarness = await db.prepare('SELECT name FROM harness_versions WHERE id = ?').get(exp.base_harness_version_id) as any;
     const baseHarnessName = baseHarness ? baseHarness.name : 'v1.0.0';
 
-    const insertTx = db.transaction(() => {
+    const insertTx = db.transaction(async () => {
       const createdVariants: any[] = [];
 
-      proposals.forEach((p, idx) => {
+      for (let idx = 0; idx < proposals.length; idx++) {
+        const p = proposals[idx];
         const varVersionName = `${baseHarnessName}-var-${idx + 1}-${Math.floor(1000 + Math.random() * 9000)}`;
 
         const configYaml = `
@@ -95,14 +96,14 @@ tool_configuration:
 +`;
 
         // Insert harness version
-        const hvResult = db.prepare(`
+        const hvResult = await db.prepare(`
           INSERT INTO harness_versions (name, config, notes)
           VALUES (?, ?, ?)
         `).run(varVersionName, configYaml.trim(), `Proposed variant for experiment: ${exp.name}`);
         const newHarnessVersionId = hvResult.lastInsertRowid;
 
         // Insert variant
-        const varResult = db.prepare(`
+        const varResult = await db.prepare(`
           INSERT INTO experiment_variants (experiment_id, harness_version_id, variant_label, config_diff, exported_config_uri, status)
           VALUES (?, ?, ?, ?, ?, 'PLANNED')
         `).run(
@@ -120,12 +121,12 @@ tool_configuration:
           exported_config_uri: `public/demo/runs/improved.json`,
           status: 'planned'
         });
-      });
+      }
 
       return createdVariants;
     });
 
-    const result = insertTx();
+    const result = await insertTx();
 
     const jobId = createJob('propose');
     updateJob(jobId, 'completed', 1.0);

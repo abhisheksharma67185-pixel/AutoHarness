@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const list = db.prepare('SELECT * FROM benchmarks ORDER BY id ASC').all() as any[];
+    const list = await db.prepare('SELECT * FROM benchmarks ORDER BY id ASC').all() as any[];
     const formatted = list.map(b => ({
       id: `b${b.id}`,
       slug: b.slug,

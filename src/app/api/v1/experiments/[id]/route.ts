@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid experiment_id format', { field: 'experiment_id' }, 400);
     }
 
-    let exp = db.prepare(`
+    let exp = await db.prepare(`
       SELECT e.*, b.slug as benchmark_slug, hv.name as base_harness_version_name
       FROM experiments e
       JOIN benchmarks b ON e.benchmark_id = b.id
@@ -33,8 +33,8 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (!exp) {
       try {
         const { syncExperimentsDevToLocal } = await import('@/lib/ingest-helper');
-        syncExperimentsDevToLocal();
-        exp = db.prepare(`
+        await syncExperimentsDevToLocal();
+        exp = await db.prepare(`
           SELECT e.*, b.slug as benchmark_slug, hv.name as base_harness_version_name
           FROM experiments e
           JOIN benchmarks b ON e.benchmark_id = b.id
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
 
     // Fetch targets
-    const targets = db.prepare(`
+    const targets = await db.prepare(`
       SELECT target_type, target_id, desired_delta
       FROM experiment_targets
       WHERE experiment_id = ?

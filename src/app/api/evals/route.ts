@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
       const cleanIdStr = suite_id.startsWith('es') ? suite_id.slice(2) : suite_id;
       const suiteId = parseInt(cleanIdStr, 10);
 
-      const suite = db.prepare(`
+      const suite = await db.prepare(`
         SELECT es.id, es.name, es.description, es.created_at, b.slug as benchmark_slug
         FROM eval_suites es
         JOIN benchmarks b ON es.benchmark_id = b.id
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Suite not found' }, { status: 404 });
       }
 
-      const casesRows = db.prepare(`
+      const casesRows = await db.prepare(`
         SELECT ec.id, ec.benchmark_task_id, ec.input_spec, ec.expected_spec, bt.task_id as slug
         FROM eval_cases ec
         JOIN eval_suite_members esm ON ec.id = esm.eval_case_id
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
         };
       });
 
-      const runsRows = db.prepare(`
+      const runsRows = await db.prepare(`
         SELECT er.id, er.created_at, er.status, er.metrics, hv.name as harness_version_id
         FROM eval_runs er
         LEFT JOIN harness_versions hv ON er.harness_version_id = hv.id
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const suitesRows = db.prepare(`
+    const suitesRows = await db.prepare(`
       SELECT es.id, es.name, es.description, b.slug as benchmark_slug,
              COUNT(esm.eval_case_id) as case_count
       FROM eval_suites es
@@ -213,7 +213,7 @@ export async function POST(req: NextRequest) {
       if (suiteId) {
         try {
           const { syncEvalSuitesDevToLocal } = await import('@/lib/ingest-helper');
-          syncEvalSuitesDevToLocal(suiteId);
+          await syncEvalSuitesDevToLocal(suiteId);
         } catch (syncErr) {
           console.error('Failed to sync new eval suite:', syncErr);
         }
@@ -254,7 +254,7 @@ export async function POST(req: NextRequest) {
       if (suiteId) {
         try {
           const { syncEvalSuitesDevToLocal } = await import('@/lib/ingest-helper');
-          syncEvalSuitesDevToLocal(suiteId);
+          await syncEvalSuitesDevToLocal(suiteId);
         } catch (syncErr) {
           console.error('Failed to sync new failure mode eval suite:', syncErr);
         }
@@ -314,7 +314,7 @@ export async function POST(req: NextRequest) {
       if (eval_suite_id) {
         try {
           const { syncEvalSuitesDevToLocal } = await import('@/lib/ingest-helper');
-          syncEvalSuitesDevToLocal(eval_suite_id);
+          await syncEvalSuitesDevToLocal(eval_suite_id);
         } catch (syncErr) {
           console.error('Failed to sync eval suite after promoting failure:', syncErr);
         }

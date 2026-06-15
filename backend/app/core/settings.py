@@ -41,7 +41,19 @@ def get_settings() -> Settings:
     import os
     import shutil
     settings = Settings()
-    if os.environ.get("VERCEL"):
+    
+    # Check if DATABASE_URL is set in environment (including on Vercel)
+    env_db_url = os.environ.get("DATABASE_URL")
+    if env_db_url:
+        # Convert postgres:// or postgresql:// to postgresql+asyncpg:// for async compatibility
+        if env_db_url.startswith("postgres://"):
+            settings.database_url = env_db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif env_db_url.startswith("postgresql://"):
+            settings.database_url = env_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        else:
+            settings.database_url = env_db_url
+        print(f"Using database URL from environment: {settings.database_url}")
+    elif os.environ.get("VERCEL"):
         src_db = f"{BACKEND_DIR}/dev.db"
         dst_db = "/tmp/dev.db"
         if os.path.exists(src_db) and not os.path.exists(dst_db):

@@ -1,0 +1,9 @@
+{
+  "task": "parse-server-logs",
+  "task_id": "tb2-parse-server-logs",
+  "category": "filesystem",
+  "difficulty": "easy",
+  "status": "PASS",
+  "score": 1,
+  "description": "Parse /var/log/nginx/access.log and output a JSON report of HTTP 500 error counts per endpoint."
+}

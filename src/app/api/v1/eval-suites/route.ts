@@ -25,14 +25,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Resolve benchmark
-    const bench = db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
+    const bench = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
     if (!bench) {
       return sendError('NOT_FOUND', `Benchmark not found with slug: ${benchmark_slug}`, { benchmark_slug }, 404);
     }
 
-    const suiteTx = db.transaction(() => {
+    const suiteTx = db.transaction(async () => {
       // 1. Insert suite
-      const suiteResult = db.prepare(`
+      const suiteResult = await db.prepare(`
         INSERT INTO eval_suites (name, benchmark_id, description)
         VALUES (?, ?, ?)
       `).run(name, bench.id, description);
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
         if (isNaN(labelId)) continue;
 
         // Fetch failure label and task details
-        const details = db.prepare(`
+        const details = await db.prepare(`
           SELECT fl.id as failure_label_id, rt.benchmark_task_id, bt.task_id, bt.title as slug,
                  json_extract(bt.metadata, '$.description') as description
           FROM failure_labels fl
@@ -70,14 +70,14 @@ export async function POST(req: NextRequest) {
         });
 
         // Insert eval case
-        const caseResult = db.prepare(`
+        const caseResult = await db.prepare(`
           INSERT INTO eval_cases (benchmark_task_id, failure_label_id, input_spec, expected_spec, scoring_config, created_by)
           VALUES (?, ?, ?, ?, ?, 'MANUAL')
         `).run(details.benchmark_task_id, details.failure_label_id, inputSpec, expectedSpec, '{}');
         const evalCaseId = caseResult.lastInsertRowid;
 
         // Insert eval suite member
-        db.prepare(`
+        await db.prepare(`
           INSERT OR IGNORE INTO eval_suite_members (eval_suite_id, eval_case_id)
           VALUES (?, ?)
         `).run(evalSuiteId, evalCaseId);
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
       return { evalSuiteId, caseCount };
     });
 
-    const result = suiteTx();
+    const result = await suiteTx();
 
     return sendSuccess({
       eval_suite_id: `es${result.evalSuiteId}`,
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
   try {
     try {
       const { syncEvalSuitesDevToLocal } = await import('@/lib/ingest-helper');
-      syncEvalSuitesDevToLocal();
+      await syncEvalSuitesDevToLocal();
     } catch (syncErr) {
       console.error('Failed to lazy sync eval suites:', syncErr);
     }
@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
 
     query += ' GROUP BY es.id ORDER BY es.id ASC';
 
-    const suites = db.prepare(query).all(...sqlParams) as any[];
+    const suites = await db.prepare(query).all(...sqlParams) as any[];
 
     const formatted = suites.map(s => ({
       id: `es${s.id}`,

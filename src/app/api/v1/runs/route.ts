@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     query += ' ORDER BY r.created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
-    const runs = db.prepare(query).all(...params) as any[];
+    const runs = await db.prepare(query).all(...params) as any[];
 
     const formatted = runs.map(r => {
       let metricsObj = { success_rate: 0, avg_score: 0, num_tasks: 0, num_failures: 0 };

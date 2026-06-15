@@ -56,14 +56,14 @@ export async function runBackgroundDiagnosis(jobId: string, runId: string) {
     updateJob(jobId, 'running', 0.05);
 
     // Fetch run
-    const run = db.prepare('SELECT id FROM runs WHERE id = ?').get(runId);
+    const run = await db.prepare('SELECT id FROM runs WHERE id = ?').get(runId);
     if (!run) {
       updateJob(jobId, 'failed', 0.0, 'Run not found');
       return;
     }
 
     // Fetch all failed tasks for the run
-    const failedTasks = db.prepare(`
+    const failedTasks = await db.prepare(`
       SELECT rt.id, rt.run_id, bt.task_id, bt.title as slug, bt.category, bt.difficulty,
              json_extract(bt.metadata, '$.description') as description
       FROM run_tasks rt
@@ -80,7 +80,7 @@ export async function runBackgroundDiagnosis(jobId: string, runId: string) {
       const t = failedTasks[i];
       
       // Fetch trace steps
-      const dbSteps = db.prepare(`
+      const dbSteps = await db.prepare(`
         SELECT id, run_task_id, step_index, step_type, content, metadata
         FROM trace_steps
         WHERE run_task_id = ?
@@ -118,7 +118,7 @@ export async function runBackgroundDiagnosis(jobId: string, runId: string) {
       }
 
       // Upsert failure label
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO failure_labels (run_task_id, is_failure, source, score, diagnosis_text, taxonomy_primary, taxonomy_secondary)
         VALUES (?, 1, 'LLM_JUDGE', NULL, ?, ?, '[]')
         ON CONFLICT(run_task_id) DO UPDATE SET
@@ -152,7 +152,7 @@ export async function runBackgroundReclustering(jobId: string, benchmarkId: numb
 
     // Fetch all failed tasks with their failure labels for the target runs
     const placeholders = runIds.map(() => '?').join(',');
-    const failedTasks = db.prepare(`
+    const failedTasks = await db.prepare(`
       SELECT rt.id, rt.run_id, bt.task_id, bt.title as slug, bt.category, bt.difficulty,
              json_extract(bt.metadata, '$.description') as description,
              fl.diagnosis_text, fl.taxonomy_primary as taxonomy_label, fl.id as label_id
@@ -170,21 +170,21 @@ export async function runBackgroundReclustering(jobId: string, benchmarkId: numb
     }
 
     // Run transaction to re-cluster
-    const reclusterTx = db.transaction(() => {
+    const reclusterTx = db.transaction(async () => {
       // 1. Delete previous failure mode members and failure modes for this benchmark
-      db.prepare(`
+      await db.prepare(`
         DELETE FROM failure_mode_members 
         WHERE failure_mode_id IN (SELECT id FROM failure_modes WHERE benchmark_id = ?)
       `).run(benchmarkId);
 
-      db.prepare('DELETE FROM failure_modes WHERE benchmark_id = ?').run(benchmarkId);
+      await db.prepare('DELETE FROM failure_modes WHERE benchmark_id = ?').run(benchmarkId);
 
       // 2. Perform clustering
       const clusters = clusterFailuresLocally(failedTasks);
 
       // 3. Insert new FailureModes and FailureModeMembers
       for (const cluster of clusters) {
-        const fmResult = db.prepare(`
+        const fmResult = await db.prepare(`
           INSERT INTO failure_modes (benchmark_id, name, description, taxonomy_primary, stats)
           VALUES (?, ?, ?, ?, '{}')
         `).run(benchmarkId, cluster.title, cluster.description, cluster.taxonomy_label);
@@ -193,7 +193,7 @@ export async function runBackgroundReclustering(jobId: string, benchmarkId: numb
         for (const memberId of cluster.memberIds) {
           const taskObj = failedTasks.find(f => f.id === memberId);
           if (taskObj) {
-            db.prepare(`
+            await db.prepare(`
               INSERT OR IGNORE INTO failure_mode_members (failure_mode_id, failure_label_id, distance)
               VALUES (?, ?, 0.0)
             `).run(failureModeId, taskObj.label_id);
@@ -202,7 +202,7 @@ export async function runBackgroundReclustering(jobId: string, benchmarkId: numb
       }
     });
 
-    reclusterTx();
+    await reclusterTx();
     updateJob(jobId, 'running', 0.9);
     updateJob(jobId, 'completed', 1.0);
   } catch (err: any) {

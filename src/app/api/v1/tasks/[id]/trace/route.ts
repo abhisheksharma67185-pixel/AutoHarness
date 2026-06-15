@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid run_task_id format', { field: 'run_task_id' }, 400);
     }
 
-    const steps = db.prepare(`
+    const steps = await db.prepare(`
       SELECT * FROM trace_steps
       WHERE run_task_id = ?
       ORDER BY step_index ASC

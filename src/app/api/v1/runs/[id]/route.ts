@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   try {
     const { id } = await params;
-    let run = db.prepare(`
+    let run = await db.prepare(`
       SELECT r.id, r.run_label, r.global_score, r.metrics, r.created_at, r.raw_artifact_uri,
              b.slug as benchmark_slug,
              r.agent_name as agent_name,
@@ -28,9 +28,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     if (!run) {
       const { syncRunDevToLocal } = await import('@/lib/ingest-helper');
-      const synced = syncRunDevToLocal(id);
+      const synced = await syncRunDevToLocal(id);
       if (synced) {
-        run = db.prepare(`
+        run = await db.prepare(`
           SELECT r.id, r.run_label, r.global_score, r.metrics, r.created_at, r.raw_artifact_uri,
                  b.slug as benchmark_slug,
                  r.agent_name as agent_name,

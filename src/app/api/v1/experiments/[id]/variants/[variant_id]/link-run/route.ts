@@ -34,24 +34,24 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     // Check experiment exists
-    const exp = db.prepare('SELECT * FROM experiments WHERE id = ?').get(expIdNum) as any;
+    const exp = await db.prepare('SELECT * FROM experiments WHERE id = ?').get(expIdNum) as any;
     if (!exp) {
       return sendError('NOT_FOUND', `Experiment not found with ID: ${id}`, { experiment_id: id }, 404);
     }
 
     // Check variant exists
-    const variant = db.prepare('SELECT * FROM experiment_variants WHERE id = ? AND experiment_id = ?').get(variantIdNum, expIdNum) as any;
+    const variant = await db.prepare('SELECT * FROM experiment_variants WHERE id = ? AND experiment_id = ?').get(variantIdNum, expIdNum) as any;
     if (!variant) {
       return sendError('NOT_FOUND', `Variant not found with ID: ${variant_id} for experiment: ${id}`, { variant_id }, 404);
     }
 
     // Check run exists, if not sync it from dev.db
-    let newRun = db.prepare('SELECT * FROM runs WHERE id = ?').get(run_id) as any;
+    let newRun = await db.prepare('SELECT * FROM runs WHERE id = ?').get(run_id) as any;
     if (!newRun) {
       const { syncRunDevToLocal } = await import('@/lib/ingest-helper');
-      const synced = syncRunDevToLocal(run_id);
+      const synced = await syncRunDevToLocal(run_id);
       if (synced) {
-        newRun = db.prepare('SELECT * FROM runs WHERE id = ?').get(run_id) as any;
+        newRun = await db.prepare('SELECT * FROM runs WHERE id = ?').get(run_id) as any;
       }
     }
 
@@ -60,16 +60,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     // Helper function to run evaluation
-    const runEvaluation = (suiteId: number, harnessVersionId: number) => {
+    const runEvaluation = async (suiteId: number, harnessVersionId: number) => {
       // Insert pending eval_runs record
-      const erResult = db.prepare(`
+      const erResult = await db.prepare(`
         INSERT INTO eval_runs (eval_suite_id, harness_version_id, status, metrics)
         VALUES (?, ?, 'PENDING', '{}')
       `).run(suiteId, harnessVersionId);
       const evalRunId = erResult.lastInsertRowid;
 
       // Get cases in suite
-      const cases = db.prepare(`
+      const cases = await db.prepare(`
         SELECT ec.*
         FROM eval_cases ec
         JOIN eval_suite_members esm ON ec.id = esm.eval_case_id
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       let scoreSum = 0;
 
       for (const c of cases) {
-        const runTask = db.prepare(`
+        const runTask = await db.prepare(`
           SELECT rt.status, rt.score
           FROM run_tasks rt
           JOIN runs r ON rt.run_id = r.id
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         if (caseStatus === 'PASS') passedCount++;
         scoreSum += caseScore;
 
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO eval_results (eval_run_id, eval_case_id, status, score, raw_output, judge_metadata)
           VALUES (?, ?, ?, ?, '{}', '{}')
         `).run(evalRunId, c.id, caseStatus, caseScore);
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         num_cases: totalCases
       };
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE eval_runs
         SET status = 'COMPLETED', metrics = ?, finished_at = CURRENT_TIMESTAMP
         WHERE id = ?
@@ -121,11 +121,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     };
 
     // Update the run's harness_version_id so it links
-    db.prepare('UPDATE runs SET harness_version_id = ? WHERE id = ?')
+    await db.prepare('UPDATE runs SET harness_version_id = ? WHERE id = ?')
       .run(variant.harness_version_id, run_id);
 
     // Fetch baseline run details
-    const baseRun = db.prepare(`
+    const baseRun = await db.prepare(`
       SELECT * FROM runs
       WHERE harness_version_id = ? AND benchmark_id = ?
       ORDER BY created_at DESC
@@ -139,17 +139,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     const policy = JSON.parse(exp.regression_policy || '{}');
 
     // Fetch all suites under the benchmark
-    const suites = db.prepare('SELECT id, name FROM eval_suites WHERE benchmark_id = ?').all(exp.benchmark_id) as any[];
+    const suites = await db.prepare('SELECT id, name FROM eval_suites WHERE benchmark_id = ?').all(exp.benchmark_id) as any[];
 
     // Start transaction to run evaluations and write summaries
-    const transaction = db.transaction(() => {
-      db.prepare('DELETE FROM experiment_variant_eval_summaries WHERE experiment_variant_id = ?').run(variantIdNum);
+    const transaction = db.transaction(async () => {
+      await db.prepare('DELETE FROM experiment_variant_eval_summaries WHERE experiment_variant_id = ?').run(variantIdNum);
 
       for (const suite of suites) {
         const suiteId = suite.id;
 
         // Fetch or create baseline eval run
-        let baselineEvalRun = db.prepare(`
+        let baselineEvalRun = await db.prepare(`
           SELECT id, metrics FROM eval_runs
           WHERE eval_suite_id = ? AND harness_version_id = ? AND status = 'COMPLETED'
           ORDER BY created_at DESC
@@ -165,13 +165,13 @@ export async function POST(req: NextRequest, { params }: Params) {
             baselinePassRate = JSON.parse(baselineEvalRun.metrics).pass_rate || 0.0;
           } catch {}
         } else {
-          const res = runEvaluation(suiteId, exp.base_harness_version_id);
+          const res = await runEvaluation(suiteId, exp.base_harness_version_id);
           baselineEvalRunId = res.evalRunId;
           baselinePassRate = res.passRate;
         }
 
         // Run evaluation for variant's harness version
-        const variantRes = runEvaluation(suiteId, variant.harness_version_id);
+        const variantRes = await runEvaluation(suiteId, variant.harness_version_id);
         const variantEvalRunId = variantRes.evalRunId;
         const variantPassRate = variantRes.passRate;
 
@@ -214,17 +214,17 @@ export async function POST(req: NextRequest, { params }: Params) {
           regressionFlag = 1;
         }
 
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO experiment_variant_eval_summaries (experiment_variant_id, eval_suite_id, baseline_eval_run_id, variant_eval_run_id, delta_pass_rate, regression_flag)
           VALUES (?, ?, ?, ?, ?, ?)
         `).run(variantIdNum, suiteId, baselineEvalRunId, variantEvalRunId, deltaPassRate, regressionFlag);
       }
 
       // Update variant status to 'EVALUATED'
-      db.prepare("UPDATE experiment_variants SET status = 'EVALUATED' WHERE id = ?").run(variantIdNum);
+      await db.prepare("UPDATE experiment_variants SET status = 'EVALUATED' WHERE id = ?").run(variantIdNum);
     });
 
-    transaction();
+    await transaction();
 
     return sendSuccess({
       linked: true

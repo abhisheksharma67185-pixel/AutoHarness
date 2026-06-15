@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     const limit = parseInt(searchParams.get('limit') || '100', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-    const tasks = db.prepare(`
+    const tasks = await db.prepare(`
       SELECT * FROM benchmark_tasks
       WHERE benchmark_id = ?
       ORDER BY id ASC

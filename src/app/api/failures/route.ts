@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
         JOIN run_tasks rt ON fl.run_task_id = rt.id
         WHERE rt.run_id = ?
       `;
-      const modes = db.prepare(queryModes).all(run_id) as any[];
+      const modes = await db.prepare(queryModes).all(run_id) as any[];
 
       // Group by name (trimmed)
       const groupedModes: Record<string, any[]> = {};
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
         // Fetch associated failure labels for all modes in this group for this run_id
         const fmIds = fmList.map(f => f.id);
         const placeholders = fmIds.map(() => '?').join(',');
-        const membersLabels = db.prepare(`
+        const membersLabels = await db.prepare(`
           SELECT fl.*
           FROM failure_labels fl
           JOIN failure_mode_members fmm ON fl.id = fmm.failure_label_id
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
         const scores: number[] = [];
 
         for (const fl of uniqueMembersLabels) {
-          const rt = db.prepare(`
+          const rt = await db.prepare(`
             SELECT rt.*, bt.task_id as benchmark_task_id, bt.title as task_title, bt.category, bt.difficulty
             FROM run_tasks rt
             JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id

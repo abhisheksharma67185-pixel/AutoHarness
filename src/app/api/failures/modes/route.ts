@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     `;
     const params: any[] = [];
     if (benchmark_slug) {
-      const bench = db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
+      const bench = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
       if (!bench) {
         return NextResponse.json({ failureModes: [] });
       }
@@ -35,21 +35,22 @@ export async function GET(req: NextRequest) {
       GROUP BY fm.id
       ORDER BY failure_count DESC
     `;
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = await db.prepare(query).all(...params) as any[];
 
     const benchmarkCache: Record<number, string> = {};
 
-    const failureModes = rows.map(fm => {
+    const failureModes = [];
+    for (const fm of rows) {
       let slug = benchmark_slug;
       if (!slug) {
         if (!benchmarkCache[fm.benchmark_id]) {
-          const b = db.prepare('SELECT slug FROM benchmarks WHERE id = ?').get(fm.benchmark_id) as any;
+          const b = await db.prepare('SELECT slug FROM benchmarks WHERE id = ?').get(fm.benchmark_id) as any;
           benchmarkCache[fm.benchmark_id] = b ? b.slug : 'unknown';
         }
         slug = benchmarkCache[fm.benchmark_id];
       }
 
-      return {
+      failureModes.push({
         id: `fm${fm.id}`,
         benchmark_id: slug,
         name: fm.name,
@@ -60,8 +61,8 @@ export async function GET(req: NextRequest) {
         failure_count: fm.failure_count || 0,
         avg_score: fm.avg_score !== null ? fm.avg_score : 0.0,
         trend: 'stable'
-      };
-    });
+      });
+    }
 
     return NextResponse.json({ failureModes });
   } catch (err: any) {

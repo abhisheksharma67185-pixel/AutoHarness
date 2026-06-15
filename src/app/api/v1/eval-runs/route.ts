@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     // Clean suite ID
     const cleanSuiteId = eval_suite_id.startsWith('es') ? eval_suite_id.slice(2) : eval_suite_id;
     const suiteIdNum = parseInt(cleanSuiteId, 10);
-    const suite = db.prepare('SELECT * FROM eval_suites WHERE id = ?').get(suiteIdNum) as any;
+    const suite = await db.prepare('SELECT * FROM eval_suites WHERE id = ?').get(suiteIdNum) as any;
 
     if (!suite) {
       return sendError('NOT_FOUND', `Eval suite not found with ID: ${eval_suite_id}`, { eval_suite_id }, 404);
@@ -33,11 +33,11 @@ export async function POST(req: NextRequest) {
     if (harnessName.startsWith('hv-')) {
       harnessName = harnessName.slice(3);
     }
-    let hv = db.prepare('SELECT id, name FROM harness_versions WHERE name = ?').get(harnessName) as any;
+    let hv = await db.prepare('SELECT id, name FROM harness_versions WHERE name = ?').get(harnessName) as any;
     if (!hv) {
       const hvIdNum = parseInt(harnessName, 10);
       if (!isNaN(hvIdNum)) {
-        hv = db.prepare('SELECT id, name FROM harness_versions WHERE id = ?').get(hvIdNum) as any;
+        hv = await db.prepare('SELECT id, name FROM harness_versions WHERE id = ?').get(hvIdNum) as any;
       }
     }
 
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Insert pending eval_runs record
-    const erResult = db.prepare(`
+    const erResult = await db.prepare(`
       INSERT INTO eval_runs (eval_suite_id, harness_version_id, status, metrics)
       VALUES (?, ?, 'PENDING', '{}')
     `).run(suite.id, hv.id);
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get cases in suite
-    const cases = db.prepare(`
+    const cases = await db.prepare(`
       SELECT ec.*
       FROM eval_cases ec
       JOIN eval_suite_members esm ON ec.id = esm.eval_case_id
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
 
     for (const c of cases) {
       // Find run task that matches harness version and case's benchmark task
-      const runTask = db.prepare(`
+      const runTask = await db.prepare(`
         SELECT rt.status, rt.score
         FROM run_tasks rt
         JOIN runs r ON rt.run_id = r.id
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       if (caseStatus === 'PASS') passedCount++;
       scoreSum += caseScore;
 
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO eval_results (eval_run_id, eval_case_id, status, score, raw_output, judge_metadata)
         VALUES (?, ?, ?, ?, '{}', '{}')
       `).run(evalRunId, c.id, caseStatus, caseScore);
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
       num_cases: totalCases
     };
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE eval_runs
       SET status = 'COMPLETED', metrics = ?, finished_at = CURRENT_TIMESTAMP
       WHERE id = ?

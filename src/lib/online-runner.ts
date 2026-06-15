@@ -183,15 +183,15 @@ export async function runOnlineEvaluation(
 ): Promise<void> {
   try {
     // Update eval_run status to RUNNING
-    db.prepare("UPDATE eval_runs SET status = 'RUNNING' WHERE id = ?").run(evalRunId);
+    await db.prepare("UPDATE eval_runs SET status = 'RUNNING' WHERE id = ?").run(evalRunId);
 
     // Fetch harness version configuration
-    const hv = db.prepare('SELECT name, config FROM harness_versions WHERE id = ?').get(harnessVersionId) as any;
+    const hv = await db.prepare('SELECT name, config FROM harness_versions WHERE id = ?').get(harnessVersionId) as any;
     const hvConfig = hv ? JSON.parse(hv.config) : {};
     
     // Fetch benchmark and cases
-    const suite = db.prepare('SELECT benchmark_id, name FROM eval_suites WHERE id = ?').get(suiteId) as any;
-    const cases = db.prepare(`
+    const suite = await db.prepare('SELECT benchmark_id, name FROM eval_suites WHERE id = ?').get(suiteId) as any;
+    const cases = await db.prepare(`
       SELECT ec.*, bt.task_id, bt.title as slug, bt.category, bt.difficulty,
              json_extract(bt.metadata, '$.description') as description
       FROM eval_cases ec
@@ -205,13 +205,13 @@ export async function runOnlineEvaluation(
     const runLabel = `Live Evaluation Run (Suite: ${suite.name})`;
     const initialMetrics = JSON.stringify({ pass_rate: 0.0, avg_score: 0.0, total_tasks: cases.length });
     
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO runs (id, benchmark_id, agent_name, harness_version_id, run_label, metrics, raw_artifact_uri)
       VALUES (?, ?, 'SigmaAgent (Live)', ?, ?, ?, ?)
     `).run(runId, suite.benchmark_id, harnessVersionId, runLabel, initialMetrics, `public/scratch/eval-run-${evalRunId}/`);
 
     // Link newly generated run to our eval_run
-    db.prepare('UPDATE eval_runs SET run_id = ? WHERE id = ?').run(runId, evalRunId);
+    await db.prepare('UPDATE eval_runs SET run_id = ? WHERE id = ?').run(runId, evalRunId);
 
     let passedCasesCount = 0;
     let scoreSum = 0;
@@ -222,7 +222,7 @@ export async function runOnlineEvaluation(
       fs.mkdirSync(sandboxDir, { recursive: true });
 
       // Insert run_task record
-      const rtResult = db.prepare(`
+      const rtResult = await db.prepare(`
         INSERT INTO run_tasks (run_id, benchmark_task_id, status, score, raw_result, started_at)
         VALUES (?, ?, 'UNKNOWN', 0.0, '{}', CURRENT_TIMESTAMP)
       `).run(runId, c.benchmark_task_id);
@@ -251,7 +251,7 @@ export async function runOnlineEvaluation(
         }
 
         // 1. Log Agent Thought step
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO trace_steps (run_task_id, step_index, step_type, content, metadata)
           VALUES (?, ?, 'ASSISTANT', ?, '{}')
         `).run(runTaskId, stepIndex++, nextStep.thought);
@@ -264,7 +264,7 @@ export async function runOnlineEvaluation(
         }
 
         // 2. Log Command step
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO trace_steps (run_task_id, step_index, step_type, content, metadata)
           VALUES (?, ?, 'COMMAND', ?, '{}')
         `).run(runTaskId, stepIndex++, nextStep.command);
@@ -307,7 +307,7 @@ export async function runOnlineEvaluation(
         }
 
         // 3. Log Command Output step
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO trace_steps (run_task_id, step_index, step_type, content, metadata)
           VALUES (?, ?, 'TOOL_RESULT', ?, '{}')
         `).run(runTaskId, stepIndex++, commandOutput);
@@ -326,7 +326,7 @@ export async function runOnlineEvaluation(
       scoreSum += finalScore;
 
       // Update run_tasks with final status and score
-      db.prepare(`
+      await db.prepare(`
         UPDATE run_tasks
         SET status = ?, score = ?, finished_at = CURRENT_TIMESTAMP
         WHERE id = ?
@@ -334,14 +334,14 @@ export async function runOnlineEvaluation(
 
       // Insert failure label diagnostic if failed
       if (finalStatus !== 'PASS') {
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO failure_labels (run_task_id, is_failure, source, score, diagnosis_text, taxonomy_primary, taxonomy_secondary)
           VALUES (?, 1, 'LLM_JUDGE', ?, 'Task failed during online re-run execution.', 'TOOL_MISUSE', '[]')
         `).run(runTaskId, finalScore);
       }
 
       // Insert eval_results
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO eval_results (eval_run_id, eval_case_id, status, score, raw_output, judge_metadata)
         VALUES (?, ?, ?, ?, ?, '{}')
       `).run(evalRunId, c.id, finalStatus, finalScore, JSON.stringify({ steps: stepsHistory }));
@@ -358,13 +358,13 @@ export async function runOnlineEvaluation(
     };
 
     // 3. Update eval_run and run records with final metrics
-    db.prepare(`
+    await db.prepare(`
       UPDATE eval_runs
       SET status = 'COMPLETED', metrics = ?, finished_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(JSON.stringify(metricsObj), evalRunId);
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE runs
       SET metrics = ?
       WHERE id = ?
@@ -372,7 +372,7 @@ export async function runOnlineEvaluation(
 
   } catch (error: any) {
     console.error('Online Rerun Job Failed:', error);
-    db.prepare(`
+    await db.prepare(`
       UPDATE eval_runs
       SET status = 'FAILED', metrics = ?, finished_at = CURRENT_TIMESTAMP
       WHERE id = ?

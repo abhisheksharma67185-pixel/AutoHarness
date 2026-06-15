@@ -17,10 +17,10 @@ export async function GET(req: NextRequest, { params }: Params) {
     const { id } = await params;
 
     // Check if run exists, if not sync it from dev.db
-    const runExists = db.prepare('SELECT id FROM runs WHERE id = ?').get(id);
+    const runExists = await db.prepare('SELECT id FROM runs WHERE id = ?').get(id);
     if (!runExists) {
       const { syncRunDevToLocal } = await import('@/lib/ingest-helper');
-      syncRunDevToLocal(id);
+      await syncRunDevToLocal(id);
     }
 
     const { searchParams } = new URL(req.url);
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     query += ' ORDER BY rt.id ASC';
 
-    const tasks = db.prepare(query).all(...sqlParams) as any[];
+    const tasks = await db.prepare(query).all(...sqlParams) as any[];
 
     const formatted = tasks.map(t => {
       const isFailure = t.status !== 'PASS';
