@@ -76,6 +76,15 @@ DATABASE_URL=sqlite:///./dev.db uvicorn app.main:app --port 8001
 
 ### 2. Start the frontend
 
+Set up your environment variables in `.env.local` or `.env`:
+
+```env
+NEXT_PUBLIC_POSTHOG_KEY=your_posthog_project_api_key
+NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com
+```
+
+Then run the setup commands:
+
 ```bash
 # In a separate terminal
 npm install

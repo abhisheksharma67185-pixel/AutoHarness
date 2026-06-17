@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { ApprovalItem } from '@/hooks/usePipelineExecution';
+import { posthog } from '@/lib/posthog';
 
 interface ApprovalPanelProps {
   approval: ApprovalItem | null;
@@ -12,6 +13,19 @@ interface ApprovalPanelProps {
 
 export function ApprovalPanel({ approval, isExecuting, onApprove, onReject }: ApprovalPanelProps) {
   const [rejectionNote, setRejectionNote] = useState('');
+
+  const handleApprove = () => {
+    posthog.capture('approval_approved');
+    onApprove();
+  };
+
+  const handleReject = () => {
+    posthog.capture('approval_rejected', {
+      has_note: !!rejectionNote.trim(),
+    });
+    onReject(rejectionNote || undefined);
+    setRejectionNote('');
+  };
 
   if (!approval) return null;
 
@@ -61,7 +75,7 @@ export function ApprovalPanel({ approval, isExecuting, onApprove, onReject }: Ap
           />
           <div className="flex gap-2">
             <button
-              onClick={onApprove}
+              onClick={handleApprove}
               disabled={isExecuting}
               className="flex-1 text-xs font-semibold text-white bg-green-600 rounded py-2 hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
             >
@@ -71,7 +85,7 @@ export function ApprovalPanel({ approval, isExecuting, onApprove, onReject }: Ap
               Approve
             </button>
             <button
-              onClick={() => { onReject(rejectionNote || undefined); setRejectionNote(''); }}
+              onClick={handleReject}
               disabled={isExecuting}
               className="flex-1 text-xs font-semibold text-white bg-red-500 rounded py-2 hover:bg-red-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
             >

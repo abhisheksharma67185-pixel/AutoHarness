@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Node, Edge } from 'reactflow';
 import { BaseNodeData } from '../components/workflow/nodes/BaseNode';
+import { posthog } from '@/lib/posthog';
 
 export interface ExecutionLog {
   step: number;
@@ -343,16 +344,27 @@ export function usePipelineExecution() {
     const executionLogs: ExecutionLog[] = [];
     let stepCount = 1;
 
+    posthog.capture('workflow_run_started');
+
     try {
       const sortedNodes = topologicalSort(nodes, edges);
       if (sortedNodes.length !== nodes.length) {
         throw new Error("Cycle detected in pipeline. Cannot execute.");
       }
-      return await runNodes(nodes, edges, sortedNodes, 0, {}, executionLogs, stepCount);
+      const result = await runNodes(nodes, edges, sortedNodes, 0, {}, executionLogs, stepCount);
+      if (result.paused) {
+        posthog.capture('approval_requested');
+      } else if (result.success) {
+        posthog.capture('workflow_run_completed');
+      } else {
+        posthog.capture('workflow_run_failed');
+      }
+      return result;
     } catch (err: unknown) {
       setIsExecuting(false);
       const errorMsg = err instanceof Error ? err.message : 'Execution failed';
       executionLogs.push({ step: stepCount++, nodeId: 'system', nodeType: 'System', message: `Error: ${errorMsg}`, timestamp: Date.now() });
+      posthog.capture('workflow_run_failed');
       return { success: false, logs: executionLogs, error: errorMsg };
     }
   }, [runNodes]);
@@ -364,6 +376,8 @@ export function usePipelineExecution() {
     setPendingApproval(null);
     setIsExecuting(true);
 
+    posthog.capture('approval_resumed');
+
     try {
       const result = await runNodes(
         state.nodes, state.edges, state.sortedNodes,
@@ -372,11 +386,19 @@ export function usePipelineExecution() {
       );
       setIsExecuting(false);
       pausedStateRef.current = null;
+      if (result.paused) {
+        posthog.capture('approval_requested');
+      } else if (result.success) {
+        posthog.capture('workflow_run_completed');
+      } else {
+        posthog.capture('workflow_run_failed');
+      }
       return result;
     } catch (err: unknown) {
       setIsExecuting(false);
       pausedStateRef.current = null;
       const errorMsg = err instanceof Error ? err.message : 'Execution failed';
+      posthog.capture('workflow_run_failed');
       return { success: false, logs: state.executionLogs, error: errorMsg };
     }
   }, [runNodes]);

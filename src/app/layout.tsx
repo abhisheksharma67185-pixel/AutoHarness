@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
+import { PostHogProvider } from '@/components/providers/PostHogProvider';
 
 export const metadata: Metadata = {
   title: 'AutoHarness Studio – Visual Experiment IDE',
@@ -19,15 +20,17 @@ export default function RootLayout({
         <div className="radial-glow top-0 left-1/4" />
         <div className="radial-glow bottom-0 right-10" />
 
-        {/* Sidebar */}
-        <Sidebar />
+        <PostHogProvider>
+          {/* Sidebar */}
+          <Sidebar />
 
-        {/* Main Workspace Scroll Area */}
-        <main className="flex-1 flex flex-col h-screen overflow-y-auto">
-          <div className="flex-1 p-8 max-w-7xl w-full mx-auto pb-16">
-            {children}
-          </div>
-        </main>
+          {/* Main Workspace Scroll Area */}
+          <main className="flex-1 flex flex-col h-screen overflow-y-auto">
+            <div className="flex-1 p-8 max-w-7xl w-full mx-auto pb-16">
+              {children}
+            </div>
+          </main>
+        </PostHogProvider>
       </body>
     </html>
   );

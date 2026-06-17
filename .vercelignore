@@ -1,0 +1,10 @@
+node_modules
+.next
+.venv
+.pytest_cache
+__pycache__
+*.db
+*.sqlite
+backend/models
+.git
+.vercel

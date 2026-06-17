@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import ReactFlow, {
   type Node,
   type Edge,
@@ -28,6 +28,7 @@ import { HTTPNode } from './nodes/HTTPNode';
 import { DatabaseNode } from './nodes/DatabaseNode';
 import { ApprovalNode } from './nodes/ApprovalNode';
 import { type BaseNodeData } from './nodes/BaseNode';
+import { posthog } from '@/lib/posthog';
 
 const nodeTypes: NodeTypes = {
   input: InputNode,
@@ -61,6 +62,25 @@ export function WorkflowCanvas({
 }: WorkflowCanvasProps) {
   const [nodes, setNodes, onNodesChangeInternal] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChangeInternal] = useEdgesState(initialEdges);
+
+  // Sync state with parent props when they change
+  useEffect(() => {
+    setNodes(initialNodes);
+  }, [initialNodes, setNodes]);
+
+  useEffect(() => {
+    setEdges(initialEdges);
+  }, [initialEdges, setEdges]);
+
+  // Track when an approval node is added to the canvas
+  const prevApprovalCount = useRef(0);
+  useEffect(() => {
+    const approvalCount = initialNodes.filter((n) => n.type === 'approval').length;
+    if (approvalCount > prevApprovalCount.current) {
+      posthog.capture('approval_node_added');
+    }
+    prevApprovalCount.current = approvalCount;
+  }, [initialNodes]);
 
   const handleNodesChange = (changes: NodeChange[]) => {
     if (onNodesChange) {
