@@ -1,0 +1,97 @@
+/* Workflow Builder Custom Styles */
+
+.workflow-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #f9fafb;
+}
+
+.workflow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background-color: white;
+  border-bottom: 1px solid #e5e7eb;
+  z-index: 10;
+}
+
+.workflow-body {
+  display: flex;
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.workflow-canvas-area {
+  flex: 1;
+  position: relative;
+  height: 100%;
+}
+
+.workflow-sidebar {
+  width: 320px;
+  background-color: white;
+  border-left: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  transition: transform 0.3s ease-in-out;
+}
+
+/* Mobile Responsive Adjustments */
+@media (max-width: 768px) {
+  .workflow-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem;
+  }
+  
+  .workflow-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .workflow-sidebar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 50vh;
+    border-left: none;
+    border-top: 1px solid #e5e7eb;
+    transform: translateY(100%);
+    box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+  
+  .workflow-sidebar.open {
+    transform: translateY(0);
+  }
+}
+
+/* ReactFlow Customizations */
+.react-flow__node {
+  border-radius: 8px;
+}
+
+.react-flow__handle {
+  width: 12px;
+  height: 12px;
+  background: #9ca3af;
+  border: 2px solid white;
+}
+
+.react-flow__handle:hover {
+  background: #8b5cf6;
+}
+
+/* Node cycle error styling */
+.node-error-cycle {
+  box-shadow: 0 0 0 2px #ef4444, 0 0 10px rgba(239, 68, 68, 0.5) !important;
+  border-color: #ef4444 !important;
+}
