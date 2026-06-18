@@ -1,12 +1,5 @@
 {
   "framework": "nextjs",
   "buildCommand": "npm run build",
-  "outputDirectory": ".next",
-  "env": {
-    "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key",
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_role_key",
-    "NEXT_PUBLIC_POSTHOG_KEY": "@posthog_key",
-    "NEXT_PUBLIC_POSTHOG_HOST": "@posthog_host"
-  }
+  "outputDirectory": ".next"
 }
