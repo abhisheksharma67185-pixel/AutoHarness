@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       const suiteResult = await db.prepare(`
         INSERT INTO eval_suites (name, benchmark_id, description)
         VALUES (?, ?, ?)
+        RETURNING id
       `).run(name, bench.id, description);
       const evalSuiteId = suiteResult.lastInsertRowid;
 
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
         // Fetch failure label and task details
         const details = await db.prepare(`
           SELECT fl.id as failure_label_id, rt.benchmark_task_id, bt.task_id, bt.title as slug,
-                 json_extract(bt.metadata, '$.description') as description
+                 bt.metadata as bt_metadata
           FROM failure_labels fl
           JOIN run_tasks rt ON fl.run_task_id = rt.id
           JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id
@@ -58,10 +59,13 @@ export async function POST(req: NextRequest) {
 
         if (!details) continue;
 
+        let btMetaObj: any = {};
+        try { btMetaObj = JSON.parse(details.bt_metadata || '{}'); } catch {}
+
         const inputSpec = JSON.stringify({
           task_id: details.task_id,
           slug: details.slug,
-          original_instructions: details.description || ''
+          original_instructions: btMetaObj.description || ''
         });
 
         const expectedSpec = JSON.stringify({
@@ -73,13 +77,15 @@ export async function POST(req: NextRequest) {
         const caseResult = await db.prepare(`
           INSERT INTO eval_cases (benchmark_task_id, failure_label_id, input_spec, expected_spec, scoring_config, created_by)
           VALUES (?, ?, ?, ?, ?, 'MANUAL')
+          RETURNING id
         `).run(details.benchmark_task_id, details.failure_label_id, inputSpec, expectedSpec, '{}');
         const evalCaseId = caseResult.lastInsertRowid;
 
         // Insert eval suite member
         await db.prepare(`
-          INSERT OR IGNORE INTO eval_suite_members (eval_suite_id, eval_case_id)
+          INSERT INTO eval_suite_members (eval_suite_id, eval_case_id)
           VALUES (?, ?)
+          ON CONFLICT DO NOTHING
         `).run(evalSuiteId, evalCaseId);
 
         caseCount++;
@@ -132,7 +138,7 @@ export async function GET(req: NextRequest) {
       sqlParams.push(benchmarkSlug);
     }
 
-    query += ' GROUP BY es.id ORDER BY es.id ASC';
+    query += ' GROUP BY es.id, b.slug ORDER BY es.id ASC';
 
     const suites = await db.prepare(query).all(...sqlParams) as any[];
 

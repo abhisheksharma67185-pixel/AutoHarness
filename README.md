@@ -14,20 +14,27 @@
 - **Reject-with-note** — reject with an optional note; the pipeline stops and the audit trail records the decision and actor
 - **Client-side + proxied execution** — Input/Text/Logic/Output run in-browser; LLM, HTTP, and Database nodes proxy through the FastAPI backend
 - **Backward compatible** — pipelines without Approval nodes run uninterrupted
+- **Production Row Level Security (RLS)** — Row-Level Security enabled on all 6 database tables in Supabase with public read-only policies and strict default-deny write control.
+- **Advanced PostHog Analytics** — captures typed custom event properties (decision source, run context, node types), measures time-to-decision (`time_to_approval_ms`), and tracks custom conversion funnels.
+
 
 ---
 
 ## Demo Story (90-second walkthrough)
 
-1. **Open the app** → `http://localhost:3000/workflow` — the canvas loads with a sample Input → Text → LLM → Output pipeline
-2. **Add an approval gate** → click the **Approval** button in the toolbar; a node appears — connect it between any two nodes (e.g. Text → Approval → LLM)
-3. **Configure** → click the Approval node; in the properties panel, set a title ("Review prompt"), description ("Check before LLM call"), and optional fallback action
-4. **Run** → click **Run Pipeline** — execution proceeds through non-approval nodes, then pauses at the gate
-5. **Decide** → the sidebar shows an Approval panel with Approve / Reject buttons:
-   - **Approve** → execution resumes, continues to the LLM and Output, and a green "approved" event joins the timeline
-   - **Reject** → enter an optional note (e.g. "Prompt contains PII") and click Reject — the pipeline stops, the timeline records a red "rejected" event with the note
-6. **Export** → after the run, click **Export** in the timeline header; choose JSON or CSV to download a complete audit log (approval ID, actor, timestamps, decision, note)
-7. **Try repeated gates** → add multiple Approval nodes in sequence — each pauses independently; approve them one at a time and watch the timeline grow
+1. **Open the app** → `http://localhost:3000/workflow` — the canvas loads with a sample Input → Text → LLM → Output pipeline.
+2. **Add an approval gate** → click the **Approval** button in the toolbar; a node appears — connect it between the Text and LLM nodes.
+3. **Configure** → click the Approval node; in the properties panel, set a title ("Review prompt"), description ("Check before LLM call"), and optional fallback action.
+4. **Choose your demo path**:
+   * **Clean Success Path**:
+     * Run the pipeline, and observe the execution pause at the approval gate.
+     * Click **Approve** in the sidebar panel.
+     * Let the workflow complete fully, and export the CSV showing the approved event in the audit log.
+   * **Failure / Rejection Path**:
+     * Run the pipeline, and observe the execution pause at the approval gate.
+     * Click **Reject** in the sidebar panel, entering the note: `"Prompt injection detected"`.
+     * Verify that the LLM node never runs (pipeline halts immediately), and export the JSON showing the rejected event, timestamp, and rejection note.
+
 
 ---
 
@@ -76,12 +83,19 @@ DATABASE_URL=sqlite:///./dev.db uvicorn app.main:app --port 8001
 
 ### 2. Start the frontend
 
-Set up your environment variables in `.env.local` or `.env`:
+Set up your environment variables in `.env`:
 
 ```env
+# PostHog Analytics
 NEXT_PUBLIC_POSTHOG_KEY=your_posthog_project_api_key
 NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com
+
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-secret-service-role-key
 ```
+
 
 Then run the setup commands:
 
@@ -123,15 +137,21 @@ http://localhost:3000/workflow
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 16, React 19, React Flow 11, Tailwind CSS 4, TypeScript |
-| Backend | FastAPI, SQLAlchemy, SQLite (default) / Postgres, Pydantic v2 |
+| Backend | FastAPI, SQLAlchemy, Supabase PostgreSQL, Pydantic v2 |
+| Security | Row Level Security (RLS) policies, Two-Key Supabase clients (Anon/Service-Role) |
+| Analytics | PostHog (custom event properties, funnel, and decision time tracking) |
 | LLM | Ollama (local inference) |
 | Language | Python 3.11+, TypeScript |
+
 
 ---
 
 ## Project Structure
 
 ```
+supabase/
+  migrations/
+    001_enable_rls.sql    — SQL schema setup and RLS policy definition
 backend/
   app/
     main.py               — FastAPI app, route registration
@@ -151,8 +171,14 @@ src/
     ApprovalHistoryTimeline.tsx — Event timeline
     ApprovalExport.tsx     — JSON/CSV export dropdown
     TemplateSidebar.tsx    — Reusable workflow templates
+  lib/
+    supabase-server.ts     — Highly privileged server-side Supabase client
+    supabase-browser.ts    — Secure browser-side Supabase client
   hooks/
     usePipelineExecution.ts — Client-side execution engine
+docs/
+  supabase-rls.md         — Core documentation of the RLS security architecture
+
 ```
 
 ---

@@ -3,26 +3,73 @@
 import React, { useState } from 'react';
 import { ApprovalItem } from '@/hooks/usePipelineExecution';
 import { posthog } from '@/lib/posthog';
+import type { ApprovalEventSource, TimeBasedEventProps } from '@/lib/posthog';
 
 interface ApprovalPanelProps {
   approval: ApprovalItem | null;
   isExecuting: boolean;
   onApprove: () => void;
   onReject: (note?: string) => void;
+  /** Identifiers propagated from the active pipeline run for analytics. */
+  runId?: string;
+  workflowId?: string;
+  /** ReactFlow node id of the approval node (not the ApprovalItem id). */
+  nodeId?: string;
+  nodeTitle?: string;
+  /** Surface from which the panel is rendered. */
+  eventSource?: ApprovalEventSource;
 }
 
-export function ApprovalPanel({ approval, isExecuting, onApprove, onReject }: ApprovalPanelProps) {
+export function ApprovalPanel({
+  approval,
+  isExecuting,
+  onApprove,
+  onReject,
+  runId = '',
+  workflowId = '',
+  nodeId = '',
+  nodeTitle = '',
+  eventSource = 'panel',
+}: ApprovalPanelProps) {
   const [rejectionNote, setRejectionNote] = useState('');
 
   const handleApprove = () => {
-    posthog.capture('approval_approved');
+    const requestedAt = approval?.requestedAt ?? '';
+    const timeToApprovalMs = requestedAt
+      ? Date.now() - new Date(requestedAt).getTime()
+      : 0;
+
+    const props: TimeBasedEventProps = {
+      run_id: runId,
+      workflow_id: workflowId,
+      node_id: nodeId || approval?.id || '',
+      node_title: nodeTitle || approval?.title || '',
+      approval_status: 'approved',
+      event_source: eventSource,
+      requested_at: requestedAt,
+      time_to_approval_ms: timeToApprovalMs,
+    };
+    posthog.capture('approval_approved', props);
     onApprove();
   };
 
   const handleReject = () => {
-    posthog.capture('approval_rejected', {
-      has_note: !!rejectionNote.trim(),
-    });
+    const requestedAt = approval?.requestedAt ?? '';
+    const timeToApprovalMs = requestedAt
+      ? Date.now() - new Date(requestedAt).getTime()
+      : 0;
+
+    const props: TimeBasedEventProps = {
+      run_id: runId,
+      workflow_id: workflowId,
+      node_id: nodeId || approval?.id || '',
+      node_title: nodeTitle || approval?.title || '',
+      approval_status: 'rejected',
+      event_source: eventSource,
+      requested_at: requestedAt,
+      time_to_approval_ms: timeToApprovalMs,
+    };
+    posthog.capture('approval_rejected', props);
     onReject(rejectionNote || undefined);
     setRejectionNote('');
   };

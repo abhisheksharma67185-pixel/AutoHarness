@@ -8,7 +8,8 @@ import {
   Terminal,
   AlertTriangle,
   FlaskConical,
-  GraduationCap
+  GraduationCap,
+  Workflow
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -16,12 +17,14 @@ export default function Sidebar() {
 
   const links = [
     { href: '/', label: 'Overview', icon: LayoutDashboard },
+    { href: '/workflow', label: 'Workflow Canvas', icon: Workflow },
     { href: '/runs', label: 'Runs View', icon: Layers },
     { href: '/tasks', label: 'Task Explorer', icon: Terminal },
     { href: '/failures', label: 'Failure Modes', icon: AlertTriangle },
     { href: '/evals', label: 'Eval Suites', icon: GraduationCap },
     { href: '/experiments', label: 'Experiments', icon: FlaskConical },
   ];
+
 
   return (
     <aside className="w-64 border-r border-black/5 bg-white/70 backdrop-blur-md flex flex-col h-screen sticky top-0 shrink-0">

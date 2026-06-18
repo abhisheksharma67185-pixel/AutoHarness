@@ -67,8 +67,9 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
     const benchUrl = metadata.benchmark_source_url || '';
 
     await db.prepare(`
-      INSERT OR IGNORE INTO benchmarks (name, slug, description, source_url)
+      INSERT INTO benchmarks (name, slug, description, source_url)
       VALUES (?, ?, ?, ?)
+      ON CONFLICT (slug) DO NOTHING
     `).run(benchName, benchSlug, benchDesc, benchUrl);
 
     const benchmarkRow = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchSlug) as any;
@@ -80,8 +81,9 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
     const harnessNotes = metadata.harness_notes || 'Auto-registered during ingestion';
 
     await db.prepare(`
-      INSERT OR IGNORE INTO harness_versions (name, config, notes)
+      INSERT INTO harness_versions (name, config, notes)
       VALUES (?, ?, ?)
+      ON CONFLICT (name) DO NOTHING
     `).run(harnessName, harnessConfig, harnessNotes);
 
     const harnessRow = await db.prepare('SELECT id FROM harness_versions WHERE name = ?').get(harnessName) as any;
@@ -113,8 +115,9 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
     for (const t of tasks) {
       // Register task definition
       await db.prepare(`
-        INSERT OR IGNORE INTO benchmark_tasks (benchmark_id, task_id, title, category, difficulty, metadata)
+        INSERT INTO benchmark_tasks (benchmark_id, task_id, title, category, difficulty, metadata)
         VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (benchmark_id, task_id) DO NOTHING
       `).run(
         benchmarkId,
         t.task_id,
@@ -144,6 +147,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
       const runTaskResult = await db.prepare(`
         INSERT INTO run_tasks (run_id, benchmark_task_id, status, score, raw_result)
         VALUES (?, ?, ?, ?, ?)
+        RETURNING id
       `).run(run_id, benchmarkTaskId, status, t.score, JSON.stringify(t));
       const runTaskId = runTaskResult.lastInsertRowid;
 
@@ -181,6 +185,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
         const labelResult = await db.prepare(`
           INSERT INTO failure_labels (run_task_id, is_failure, source, score, diagnosis_text, taxonomy_primary, taxonomy_secondary)
           VALUES (?, 1, 'BENCHMARK', NULL, ?, ?, '[]')
+          RETURNING id
         `).run(runTaskId, preFetched.diagnosis_text, preFetched.taxonomy_label);
 
         failedTasksForClustering.push({
@@ -209,6 +214,7 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
       const fmResult = await db.prepare(`
         INSERT INTO failure_modes (benchmark_id, name, description, taxonomy_primary, stats)
         VALUES (?, ?, ?, ?, '{}')
+        RETURNING id
       `).run(benchmarkId, cluster.title, cluster.description, cluster.taxonomy_label);
       const failureModeId = fmResult.lastInsertRowid;
 
@@ -217,8 +223,9 @@ export async function performIngestion(payload: IngestionPayload): Promise<{
         const taskObj = failedTasksForClustering.find(f => f.id === memberId);
         if (taskObj) {
           await db.prepare(`
-            INSERT OR IGNORE INTO failure_mode_members (failure_mode_id, failure_label_id, distance)
+            INSERT INTO failure_mode_members (failure_mode_id, failure_label_id, distance)
             VALUES (?, ?, 0.0)
+            ON CONFLICT (failure_mode_id, failure_label_id) DO NOTHING
           `).run(failureModeId, taskObj.label_id);
 
           taxonomyDistribution[taskObj.taxonomy_label] = (taxonomyDistribution[taskObj.taxonomy_label] || 0) + 1;
@@ -486,6 +493,7 @@ export async function syncRunDevToLocal(runId: string): Promise<boolean> {
         const insertBench = await db.prepare(`
           INSERT INTO benchmarks (name, slug, description, source_url)
           VALUES (?, ?, ?, ?)
+          RETURNING id
         `).run(
           runDev.benchmark_slug === 'terminal-bench@2.0' ? 'Terminal-Bench 2.0' : runDev.benchmark_slug,
           runDev.benchmark_slug,
@@ -504,6 +512,7 @@ export async function syncRunDevToLocal(runId: string): Promise<boolean> {
         const insertHv = await db.prepare(`
           INSERT INTO harness_versions (name, config, notes)
           VALUES (?, ?, ?)
+          RETURNING id
         `).run(
           runDev.harness_version || 'unknown',
           JSON.stringify({}),
@@ -534,8 +543,9 @@ export async function syncRunDevToLocal(runId: string): Promise<boolean> {
       for (const tDev of tasksDev) {
         // Insert benchmark task
         await db.prepare(`
-          INSERT OR IGNORE INTO benchmark_tasks (benchmark_id, task_id, title, category, difficulty, metadata)
+          INSERT INTO benchmark_tasks (benchmark_id, task_id, title, category, difficulty, metadata)
           VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT (benchmark_id, task_id) DO NOTHING
         `).run(
           benchmarkId,
           tDev.benchmark_task_id,
@@ -552,6 +562,7 @@ export async function syncRunDevToLocal(runId: string): Promise<boolean> {
         const insertRt = await db.prepare(`
           INSERT INTO run_tasks (run_id, benchmark_task_id, status, score, raw_result, started_at, finished_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
+          RETURNING id
         `).run(
           runId,
           benchmarkTaskId,
@@ -713,19 +724,29 @@ export async function syncExperimentsDevToLocal(experimentId?: string): Promise<
 
         // Ensure dummy/fallback eval_suite and eval_run exist to satisfy foreign key constraints
         await db.prepare(`
-          INSERT OR IGNORE INTO eval_suites (id, name, benchmark_id, description)
+          INSERT INTO eval_suites (id, name, benchmark_id, description)
           VALUES (999999, 'Fallback Suite', ?, 'Fallback Suite for unresolved references')
+          ON CONFLICT (id) DO NOTHING
         `).run(benchmarkId);
 
         await db.prepare(`
-          INSERT OR IGNORE INTO eval_runs (id, eval_suite_id, harness_version_id, status, metrics)
+          INSERT INTO eval_runs (id, eval_suite_id, harness_version_id, status, metrics)
           VALUES (999999, 999999, ?, 'COMPLETED', '{}')
+          ON CONFLICT (id) DO NOTHING
         `).run(baseHarnessVersionId);
 
         // Insert or replace experiment
         await db.prepare(`
-          INSERT OR REPLACE INTO experiments (id, name, benchmark_id, base_harness_version_id, target_description, config_template, regression_policy, created_at)
+          INSERT INTO experiments (id, name, benchmark_id, base_harness_version_id, target_description, config_template, regression_policy, created_at)
           VALUES (?, ?, ?, ?, ?, '{}', ?, ?)
+          ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            benchmark_id = EXCLUDED.benchmark_id,
+            base_harness_version_id = EXCLUDED.base_harness_version_id,
+            target_description = EXCLUDED.target_description,
+            config_template = EXCLUDED.config_template,
+            regression_policy = EXCLUDED.regression_policy,
+            created_at = EXCLUDED.created_at
         `).run(
           localExpId,
           expDev.name,
@@ -771,6 +792,7 @@ export async function syncExperimentsDevToLocal(experimentId?: string): Promise<
             const insertVarHv = await db.prepare(`
               INSERT INTO harness_versions (name, config, notes)
               VALUES (?, ?, ?)
+              RETURNING id
             `).run(
               vDev.harness_version_id,
               JSON.stringify({}),
@@ -780,8 +802,15 @@ export async function syncExperimentsDevToLocal(experimentId?: string): Promise<
           }
 
           await db.prepare(`
-            INSERT OR REPLACE INTO experiment_variants (id, experiment_id, harness_version_id, variant_label, config_diff, exported_config_uri, status)
+            INSERT INTO experiment_variants (id, experiment_id, harness_version_id, variant_label, config_diff, exported_config_uri, status)
             VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (id) DO UPDATE SET
+              experiment_id = EXCLUDED.experiment_id,
+              harness_version_id = EXCLUDED.harness_version_id,
+              variant_label = EXCLUDED.variant_label,
+              config_diff = EXCLUDED.config_diff,
+              exported_config_uri = EXCLUDED.exported_config_uri,
+              status = EXCLUDED.status
           `).run(
             localVarId,
             localExpId,
@@ -835,7 +864,7 @@ export async function syncExperimentsDevToLocal(experimentId?: string): Promise<
             } catch {}
 
             await db.prepare(`
-              INSERT OR REPLACE INTO experiment_variant_eval_summaries (experiment_variant_id, eval_suite_id, baseline_eval_run_id, variant_eval_run_id, delta_pass_rate, regression_flag)
+              INSERT INTO experiment_variant_eval_summaries (experiment_variant_id, eval_suite_id, baseline_eval_run_id, variant_eval_run_id, delta_pass_rate, regression_flag)
               VALUES (?, ?, ?, ?, ?, ?)
             `).run(
               localVarId,
@@ -877,7 +906,7 @@ export async function syncExperimentsDevToLocal(experimentId?: string): Promise<
             } catch {}
 
             await db.prepare(`
-              INSERT OR REPLACE INTO experiment_variant_eval_summaries (experiment_variant_id, eval_suite_id, baseline_eval_run_id, variant_eval_run_id, delta_pass_rate, regression_flag)
+              INSERT INTO experiment_variant_eval_summaries (experiment_variant_id, eval_suite_id, baseline_eval_run_id, variant_eval_run_id, delta_pass_rate, regression_flag)
               VALUES (?, ?, ?, ?, ?, ?)
             `).run(
               localVarId,
@@ -940,6 +969,7 @@ export async function syncEvalSuitesDevToLocal(evalSuiteId?: string): Promise<bo
           const insertBench = await db.prepare(`
             INSERT INTO benchmarks (name, slug, description, source_url)
             VALUES (?, ?, ?, ?)
+            RETURNING id
           `).run(
             sDev.benchmark_slug === 'terminal-bench@2.0' ? 'Terminal-Bench 2.0' : sDev.benchmark_slug,
             sDev.benchmark_slug,
@@ -951,8 +981,13 @@ export async function syncEvalSuitesDevToLocal(evalSuiteId?: string): Promise<bo
 
         // Insert or replace eval suite
         await db.prepare(`
-          INSERT OR REPLACE INTO eval_suites (id, name, benchmark_id, description, created_at)
+          INSERT INTO eval_suites (id, name, benchmark_id, description, created_at)
           VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            benchmark_id = EXCLUDED.benchmark_id,
+            description = EXCLUDED.description,
+            created_at = EXCLUDED.created_at
         `).run(
           localSuiteId,
           sDev.name,
@@ -975,9 +1010,10 @@ export async function syncEvalSuitesDevToLocal(evalSuiteId?: string): Promise<bo
           if (btRow) {
             localBtId = btRow.id;
           } else {
-            const insertBt = await db.prepare(`
-              INSERT OR IGNORE INTO benchmark_tasks (benchmark_id, task_id, title, category, difficulty, metadata)
+            await db.prepare(`
+              INSERT INTO benchmark_tasks (benchmark_id, task_id, title, category, difficulty, metadata)
               VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT (benchmark_id, task_id) DO NOTHING
             `).run(
               benchmarkId,
               cDev.benchmark_task_id,
@@ -1002,8 +1038,16 @@ export async function syncEvalSuitesDevToLocal(evalSuiteId?: string): Promise<bo
 
           // Insert or replace eval case
           await db.prepare(`
-            INSERT OR REPLACE INTO eval_cases (id, benchmark_task_id, failure_label_id, input_spec, expected_spec, scoring_config, created_by, created_at)
+            INSERT INTO eval_cases (id, benchmark_task_id, failure_label_id, input_spec, expected_spec, scoring_config, created_by, created_at)
             VALUES (?, ?, ?, ?, ?, '{}', 'MANUAL', ?)
+            ON CONFLICT (id) DO UPDATE SET
+              benchmark_task_id = EXCLUDED.benchmark_task_id,
+              failure_label_id = EXCLUDED.failure_label_id,
+              input_spec = EXCLUDED.input_spec,
+              expected_spec = EXCLUDED.expected_spec,
+              scoring_config = EXCLUDED.scoring_config,
+              created_by = EXCLUDED.created_by,
+              created_at = EXCLUDED.created_at
           `).run(
             localCaseId,
             localBtId,
@@ -1015,8 +1059,9 @@ export async function syncEvalSuitesDevToLocal(evalSuiteId?: string): Promise<bo
 
           // Link in eval_suite_members
           await db.prepare(`
-            INSERT OR IGNORE INTO eval_suite_members (eval_suite_id, eval_case_id)
+            INSERT INTO eval_suite_members (eval_suite_id, eval_case_id)
             VALUES (?, ?)
+            ON CONFLICT (eval_suite_id, eval_case_id) DO NOTHING
           `).run(localSuiteId, localCaseId);
         }
       }
@@ -1076,6 +1121,7 @@ export async function syncEvalRunsDevToLocal(evalRunId?: string): Promise<boolea
           const insertHv = await db.prepare(`
             INSERT INTO harness_versions (name, config, notes)
             VALUES (?, ?, ?)
+            RETURNING id
           `).run(
             rDev.harness_version_id || 'unknown',
             JSON.stringify({}),
@@ -1086,8 +1132,16 @@ export async function syncEvalRunsDevToLocal(evalRunId?: string): Promise<boolea
 
         // Insert or replace eval run
         await db.prepare(`
-          INSERT OR REPLACE INTO eval_runs (id, eval_suite_id, harness_version_id, run_id, status, metrics, created_at, finished_at)
+          INSERT INTO eval_runs (id, eval_suite_id, harness_version_id, run_id, status, metrics, created_at, finished_at)
           VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
+          ON CONFLICT (id) DO UPDATE SET
+            eval_suite_id = EXCLUDED.eval_suite_id,
+            harness_version_id = EXCLUDED.harness_version_id,
+            run_id = EXCLUDED.run_id,
+            status = EXCLUDED.status,
+            metrics = EXCLUDED.metrics,
+            created_at = EXCLUDED.created_at,
+            finished_at = EXCLUDED.finished_at
         `).run(
           localRunId,
           localSuiteId,
@@ -1111,7 +1165,7 @@ export async function syncEvalRunsDevToLocal(evalRunId?: string): Promise<boolea
           }
 
           await db.prepare(`
-            INSERT OR REPLACE INTO eval_results (eval_run_id, eval_case_id, status, score, raw_output, judge_metadata)
+            INSERT INTO eval_results (eval_run_id, eval_case_id, status, score, raw_output, judge_metadata)
             VALUES (?, ?, ?, ?, ?, ?)
           `).run(
             localRunId,

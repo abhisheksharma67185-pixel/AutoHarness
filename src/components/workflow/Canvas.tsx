@@ -29,6 +29,7 @@ import { DatabaseNode } from './nodes/DatabaseNode';
 import { ApprovalNode } from './nodes/ApprovalNode';
 import { type BaseNodeData } from './nodes/BaseNode';
 import { posthog } from '@/lib/posthog';
+import type { NodeEventProps } from '@/lib/posthog';
 
 const nodeTypes: NodeTypes = {
   input: InputNode,
@@ -77,7 +78,8 @@ export function WorkflowCanvas({
   useEffect(() => {
     const approvalCount = initialNodes.filter((n) => n.type === 'approval').length;
     if (approvalCount > prevApprovalCount.current) {
-      posthog.capture('approval_node_added');
+      const nodeProps: NodeEventProps = { node_type: 'approval' };
+      posthog.capture('approval_node_added', nodeProps);
     }
     prevApprovalCount.current = approvalCount;
   }, [initialNodes]);

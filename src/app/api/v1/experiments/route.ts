@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
       const expResult = await db.prepare(`
         INSERT INTO experiments (name, benchmark_id, base_harness_version_id, target_description, config_template, regression_policy)
         VALUES (?, ?, ?, ?, '{}', ?)
+        RETURNING id
       `).run(
         name,
         bench.id,

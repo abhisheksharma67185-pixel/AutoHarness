@@ -66,6 +66,8 @@ function WorkflowBuilder() {
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [runId, setRunId] = useState<string>('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('custom');
+  const [approvalNodeId, setApprovalNodeId] = useState<string>('');
   const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([]);
   
   const { validate, isValidating, error } = usePipelineValidation();
@@ -146,9 +148,11 @@ function WorkflowBuilder() {
     setTimelineEntries([]);
     const rid = `run-${Date.now()}`;
     setRunId(rid);
-    const result = await executePipeline(nodes, edges);
+    setApprovalNodeId('');
+    const result = await executePipeline(nodes, edges, rid, selectedTemplateId);
 
     if (result.paused) {
+      setApprovalNodeId(result.approvalNodeId || '');
       addTimelineEntry({
         id: result.approvalId || 'approval',
         type: 'requested',
@@ -200,6 +204,7 @@ function WorkflowBuilder() {
     if (!result) return;
 
     if (result.paused) {
+      setApprovalNodeId(result.approvalNodeId || '');
       addTimelineEntry({
         id: result.approvalId || 'resumed',
         type: 'resumed',
@@ -269,6 +274,7 @@ function WorkflowBuilder() {
     setEdges(template.edges);
     setSelectedNode(null);
     setIsMobilePanelOpen(false);
+    setSelectedTemplateId(template.id);
   }, [setNodes, setEdges]);
 
   // Add new nodes from sidebar/menu
@@ -409,6 +415,11 @@ function WorkflowBuilder() {
                 isExecuting={isExecuting}
                 onApprove={handleApprove}
                 onReject={handleReject}
+                runId={runId}
+                workflowId={selectedTemplateId}
+                nodeId={approvalNodeId}
+                nodeTitle={pendingApproval.title}
+                eventSource="sidebar"
               />
             </div>
           )}

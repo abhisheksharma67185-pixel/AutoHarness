@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { TimelineEntry } from './ApprovalHistoryTimeline';
 import { posthog } from '@/lib/posthog';
+import type { ExportEventProps } from '@/lib/posthog';
 
 interface ApprovalExportProps {
   entries: TimelineEntry[];
@@ -86,7 +87,12 @@ export function ApprovalExport({ entries, runId }: ApprovalExportProps) {
       const rows = buildRows(entries, runId);
       const base = `approval-audit${runId ? `-run-${runId}` : ''}`;
 
-      posthog.capture('audit_exported', { format });
+      const exportProps: ExportEventProps = {
+        format,
+        run_id: runId || '',
+        entry_count: entries.length,
+      };
+      posthog.capture('audit_exported', exportProps);
 
       if (format === 'json') {
         triggerDownload(

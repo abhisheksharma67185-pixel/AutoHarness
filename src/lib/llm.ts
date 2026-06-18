@@ -152,6 +152,8 @@ Determine why the agent failed and return a JSON object with exactly two keys:
 
 Your output must be parseable JSON only. Do not wrap in markdown blocks.
 `;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1000);
       const res = await fetch('http://localhost:8080/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -159,8 +161,10 @@ Your output must be parseable JSON only. Do not wrap in markdown blocks.
           model: 'local',
           response_format: { type: 'json_object' },
           messages: [{ role: 'user', content: prompt }]
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       const data = await res.json();
       const text = data.choices?.[0]?.message?.content;
       if (text) {
@@ -288,6 +292,8 @@ Each modification must contain:
 
 Return a JSON array of 3 objects with these keys. No markdown formatting.
 `;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1000);
       const res = await fetch('http://localhost:8080/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -295,8 +301,10 @@ Return a JSON array of 3 objects with these keys. No markdown formatting.
           model: 'local',
           response_format: { type: 'json_object' },
           messages: [{ role: 'user', content: prompt }]
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       const data = await res.json();
       const text = data.choices?.[0]?.message?.content;
       if (text) {

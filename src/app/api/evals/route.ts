@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
       }
 
       const casesRows = await db.prepare(`
-        SELECT ec.id, ec.benchmark_task_id, ec.input_spec, ec.expected_spec, bt.task_id as slug
+        SELECT ec.id, ec.benchmark_task_id, ec.input_spec, ec.expected_spec, bt.task_id as slug, bt.metadata as bt_metadata
         FROM eval_cases ec
         JOIN eval_suite_members esm ON ec.id = esm.eval_case_id
         LEFT JOIN benchmark_tasks bt ON ec.benchmark_task_id = bt.id
@@ -39,15 +39,17 @@ export async function GET(req: NextRequest) {
       const cases = casesRows.map(c => {
         let inputObj: any = {};
         let expectedObj: any = {};
+        let btMetaObj: any = {};
         try { inputObj = JSON.parse(c.input_spec); } catch {}
         try { expectedObj = JSON.parse(c.expected_spec); } catch {}
+        try { btMetaObj = JSON.parse(c.bt_metadata || '{}'); } catch {}
         return {
           id: c.id,
           task_id: c.benchmark_task_id || c.id,
           slug: c.slug || 'N/A',
           category: inputObj.category || 'unknown',
           difficulty: inputObj.difficulty || 'medium',
-          description: inputObj.original_instructions || inputObj.description || '',
+          description: inputObj.original_instructions || inputObj.description || btMetaObj.description || '',
           input_spec: c.input_spec,
           expected_spec: c.expected_spec,
         };
@@ -93,7 +95,7 @@ export async function GET(req: NextRequest) {
       FROM eval_suites es
       JOIN benchmarks b ON es.benchmark_id = b.id
       LEFT JOIN eval_suite_members esm ON es.id = esm.eval_suite_id
-      GROUP BY es.id
+      GROUP BY es.id, es.name, es.description, b.slug
       ORDER BY es.id ASC
     `).all() as any[];
 

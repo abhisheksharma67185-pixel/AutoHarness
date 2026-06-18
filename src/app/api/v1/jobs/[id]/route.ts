@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { checkAuth, sendSuccess, sendError, fetchWithBypass } from '@/lib/api-helper';
+import { getJob } from '@/lib/jobs';
 
 const BACKEND = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}/_/backend/api/v1`
@@ -22,7 +23,6 @@ export async function GET(req: NextRequest, { params }: Params) {
     const { id } = await params;
     
     // First check Next.js internal jobs
-    const { getJob } = require('@/lib/jobs');
     const localJob = getJob(id);
     if (localJob) {
       return sendSuccess(localJob);
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     return sendSuccess(data.data);
   } catch (err: any) {
+    console.error('Jobs GET route error:', err);
     return sendError('SERVER_ERROR', err.message || 'Error checking job status', null, 500);
   }
 }

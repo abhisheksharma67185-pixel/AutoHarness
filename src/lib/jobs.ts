@@ -65,19 +65,26 @@ export async function runBackgroundDiagnosis(jobId: string, runId: string) {
     // Fetch all failed tasks for the run
     const failedTasks = await db.prepare(`
       SELECT rt.id, rt.run_id, bt.task_id, bt.title as slug, bt.category, bt.difficulty,
-             json_extract(bt.metadata, '$.description') as description
+             bt.metadata as bt_metadata
       FROM run_tasks rt
       JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id
       WHERE rt.run_id = ? AND rt.status = 'FAIL'
     `).all(runId) as any[];
 
-    if (failedTasks.length === 0) {
+    // Parse description from metadata JSON in JS (avoids SQLite-specific json_extract)
+    const failedTasksWithDesc = failedTasks.map((t: any) => {
+      let metaObj: any = {};
+      try { metaObj = JSON.parse(t.bt_metadata || '{}'); } catch {}
+      return { ...t, description: metaObj.description || '' };
+    });
+
+    if (failedTasksWithDesc.length === 0) {
       updateJob(jobId, 'completed', 1.0);
       return;
     }
 
-    for (let i = 0; i < failedTasks.length; i++) {
-      const t = failedTasks[i];
+    for (let i = 0; i < failedTasksWithDesc.length; i++) {
+      const t = failedTasksWithDesc[i];
       
       // Fetch trace steps
       const dbSteps = await db.prepare(`
@@ -129,7 +136,7 @@ export async function runBackgroundDiagnosis(jobId: string, runId: string) {
       `).run(t.id, diagnosis.diagnosis_text, mappedTaxonomy);
 
       // Update progress incrementally
-      const progress = 0.05 + (i + 1) / failedTasks.length * 0.90;
+      const progress = 0.05 + (i + 1) / failedTasksWithDesc.length * 0.90;
       updateJob(jobId, 'running', progress);
     }
 
@@ -154,7 +161,7 @@ export async function runBackgroundReclustering(jobId: string, benchmarkId: numb
     const placeholders = runIds.map(() => '?').join(',');
     const failedTasks = await db.prepare(`
       SELECT rt.id, rt.run_id, bt.task_id, bt.title as slug, bt.category, bt.difficulty,
-             json_extract(bt.metadata, '$.description') as description,
+             bt.metadata as bt_metadata,
              fl.diagnosis_text, fl.taxonomy_primary as taxonomy_label, fl.id as label_id
       FROM run_tasks rt
       JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id
@@ -162,9 +169,16 @@ export async function runBackgroundReclustering(jobId: string, benchmarkId: numb
       WHERE rt.run_id IN (${placeholders})
     `).all(...runIds) as any[];
 
+    // Parse description from metadata JSON in JS
+    const failedTasksParsed = failedTasks.map((t: any) => {
+      let metaObj: any = {};
+      try { metaObj = JSON.parse(t.bt_metadata || '{}'); } catch {}
+      return { ...t, description: metaObj.description || '' };
+    });
+
     updateJob(jobId, 'running', 0.3);
 
-    if (failedTasks.length === 0) {
+    if (failedTasksParsed.length === 0) {
       updateJob(jobId, 'completed', 1.0);
       return;
     }
@@ -180,22 +194,24 @@ export async function runBackgroundReclustering(jobId: string, benchmarkId: numb
       await db.prepare('DELETE FROM failure_modes WHERE benchmark_id = ?').run(benchmarkId);
 
       // 2. Perform clustering
-      const clusters = clusterFailuresLocally(failedTasks);
+      const clusters = clusterFailuresLocally(failedTasksParsed);
 
       // 3. Insert new FailureModes and FailureModeMembers
       for (const cluster of clusters) {
         const fmResult = await db.prepare(`
           INSERT INTO failure_modes (benchmark_id, name, description, taxonomy_primary, stats)
           VALUES (?, ?, ?, ?, '{}')
+          RETURNING id
         `).run(benchmarkId, cluster.title, cluster.description, cluster.taxonomy_label);
         const failureModeId = fmResult.lastInsertRowid;
 
         for (const memberId of cluster.memberIds) {
-          const taskObj = failedTasks.find(f => f.id === memberId);
+          const taskObj = failedTasksParsed.find((f: any) => f.id === memberId);
           if (taskObj) {
             await db.prepare(`
-              INSERT OR IGNORE INTO failure_mode_members (failure_mode_id, failure_label_id, distance)
+              INSERT INTO failure_mode_members (failure_mode_id, failure_label_id, distance)
               VALUES (?, ?, 0.0)
+              ON CONFLICT DO NOTHING
             `).run(failureModeId, taskObj.label_id);
           }
         }

@@ -99,6 +99,7 @@ tool_configuration:
         const hvResult = await db.prepare(`
           INSERT INTO harness_versions (name, config, notes)
           VALUES (?, ?, ?)
+          RETURNING id
         `).run(varVersionName, configYaml.trim(), `Proposed variant for experiment: ${exp.name}`);
         const newHarnessVersionId = hvResult.lastInsertRowid;
 
@@ -106,6 +107,7 @@ tool_configuration:
         const varResult = await db.prepare(`
           INSERT INTO experiment_variants (experiment_id, harness_version_id, variant_label, config_diff, exported_config_uri, status)
           VALUES (?, ?, ?, ?, ?, 'PLANNED')
+          RETURNING id
         `).run(
           idNum,
           newHarnessVersionId,

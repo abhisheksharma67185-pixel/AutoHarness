@@ -191,14 +191,20 @@ export async function runOnlineEvaluation(
     
     // Fetch benchmark and cases
     const suite = await db.prepare('SELECT benchmark_id, name FROM eval_suites WHERE id = ?').get(suiteId) as any;
-    const cases = await db.prepare(`
+    const casesRows = await db.prepare(`
       SELECT ec.*, bt.task_id, bt.title as slug, bt.category, bt.difficulty,
-             json_extract(bt.metadata, '$.description') as description
+             bt.metadata as bt_metadata
       FROM eval_cases ec
       JOIN eval_suite_members esm ON ec.id = esm.eval_case_id
       JOIN benchmark_tasks bt ON ec.benchmark_task_id = bt.id
       WHERE esm.eval_suite_id = ?
     `).all(suiteId) as any[];
+
+    const cases = casesRows.map((c: any) => {
+      let meta: any = {};
+      try { meta = JSON.parse(c.bt_metadata || '{}'); } catch {}
+      return { ...c, description: meta.description || '' };
+    });
 
     // 1. Insert new 'runs' record for this live evaluation
     const runId = `run-online-eval-${evalRunId}`;
@@ -225,6 +231,7 @@ export async function runOnlineEvaluation(
       const rtResult = await db.prepare(`
         INSERT INTO run_tasks (run_id, benchmark_task_id, status, score, raw_result, started_at)
         VALUES (?, ?, 'UNKNOWN', 0.0, '{}', CURRENT_TIMESTAMP)
+        RETURNING id
       `).run(runId, c.benchmark_task_id);
       const runTaskId = rtResult.lastInsertRowid;
 

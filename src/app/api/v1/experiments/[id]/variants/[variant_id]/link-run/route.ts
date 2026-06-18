@@ -65,6 +65,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       const erResult = await db.prepare(`
         INSERT INTO eval_runs (eval_suite_id, harness_version_id, status, metrics)
         VALUES (?, ?, 'PENDING', '{}')
+        RETURNING id
       `).run(suiteId, harnessVersionId);
       const evalRunId = erResult.lastInsertRowid;
 

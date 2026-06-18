@@ -25,7 +25,12 @@ class Settings(BaseSettings):
 
     docker_host: Optional[str] = None
 
+    supabase_url: Optional[str] = None
+    supabase_anon_key: Optional[str] = None
+    supabase_service_role_key: Optional[str] = None
+
     model_config = SettingsConfigDict(
+
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,

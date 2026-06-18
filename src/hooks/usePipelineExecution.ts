@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Node, Edge } from 'reactflow';
 import { BaseNodeData } from '../components/workflow/nodes/BaseNode';
 import { posthog } from '@/lib/posthog';
+import type { ApprovalEventProps, RunEventProps } from '@/lib/posthog';
 
 export interface ExecutionLog {
   step: number;
@@ -22,6 +23,8 @@ export interface ExecutionResult {
   approvalId?: string;
   approvalTitle?: string;
   approvalDescription?: string;
+  /** The ReactFlow node id of the approval node that caused the pause. */
+  approvalNodeId?: string;
 }
 
 export interface ApprovalItem {
@@ -118,6 +121,11 @@ export function usePipelineExecution() {
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [pendingApproval, setPendingApproval] = useState<ApprovalItem | null>(null);
 
+  // Run-level context refs — set once per executePipeline call and read
+  // anywhere inside the hook without causing re-renders.
+  const currentRunIdRef = useRef<string>('');
+  const currentWorkflowIdRef = useRef<string>('');
+
   const pausedStateRef = useRef<{
     nodes: Node<BaseNodeData>[];
     edges: Edge[];
@@ -126,6 +134,9 @@ export function usePipelineExecution() {
     nodeOutputs: Record<string, unknown>;
     executionLogs: ExecutionLog[];
     stepCount: number;
+    /** ReactFlow node id of the approval node that paused execution. */
+    pausedNodeId: string;
+    pausedNodeTitle: string;
   } | null>(null);
 
   const getInputsForNode = (
@@ -290,14 +301,29 @@ export function usePipelineExecution() {
           nodeOutputs[node.id] = nodeOutput;
 
           pausedStateRef.current = {
-            nodes, edges, sortedNodes,
+            nodes,
+            edges,
+            sortedNodes,
             currentIndex: i,
             nodeOutputs: { ...nodeOutputs },
             executionLogs: [...executionLogs],
             stepCount,
+            pausedNodeId: node.id,
+            pausedNodeTitle: title,
           };
 
           setIsExecuting(false);
+
+          // Funnel event: approval_requested
+          const approvalRequestedProps: ApprovalEventProps = {
+            run_id: currentRunIdRef.current,
+            workflow_id: currentWorkflowIdRef.current,
+            node_id: node.id,
+            node_title: title,
+            approval_status: 'pending',
+            event_source: 'panel',
+          };
+          posthog.capture('approval_requested', approvalRequestedProps);
 
           return {
             success: true,
@@ -306,6 +332,7 @@ export function usePipelineExecution() {
             approvalId: approvalItem.id,
             approvalTitle: title,
             approvalDescription: description,
+            approvalNodeId: node.id,
           };
         }
 
@@ -338,13 +365,19 @@ export function usePipelineExecution() {
   const executePipeline = useCallback(async (
     nodes: Node<BaseNodeData>[],
     edges: Edge[],
+    runId: string = '',
+    workflowId: string = '',
   ): Promise<ExecutionResult> => {
+    currentRunIdRef.current = runId;
+    currentWorkflowIdRef.current = workflowId;
+
     setIsExecuting(true);
     setPendingApproval(null);
     const executionLogs: ExecutionLog[] = [];
     let stepCount = 1;
 
-    posthog.capture('workflow_run_started');
+    const runProps: RunEventProps = { run_id: runId, workflow_id: workflowId };
+    posthog.capture('workflow_run_started', runProps);
 
     try {
       const sortedNodes = topologicalSort(nodes, edges);
@@ -353,18 +386,18 @@ export function usePipelineExecution() {
       }
       const result = await runNodes(nodes, edges, sortedNodes, 0, {}, executionLogs, stepCount);
       if (result.paused) {
-        posthog.capture('approval_requested');
+        // approval_requested already fired inside runNodes
       } else if (result.success) {
-        posthog.capture('workflow_run_completed');
+        posthog.capture('workflow_run_completed', runProps);
       } else {
-        posthog.capture('workflow_run_failed');
+        posthog.capture('workflow_run_failed', runProps);
       }
       return result;
     } catch (err: unknown) {
       setIsExecuting(false);
       const errorMsg = err instanceof Error ? err.message : 'Execution failed';
       executionLogs.push({ step: stepCount++, nodeId: 'system', nodeType: 'System', message: `Error: ${errorMsg}`, timestamp: Date.now() });
-      posthog.capture('workflow_run_failed');
+      posthog.capture('workflow_run_failed', runProps);
       return { success: false, logs: executionLogs, error: errorMsg };
     }
   }, [runNodes]);
@@ -376,7 +409,21 @@ export function usePipelineExecution() {
     setPendingApproval(null);
     setIsExecuting(true);
 
-    posthog.capture('approval_resumed');
+    const runProps: RunEventProps = {
+      run_id: currentRunIdRef.current,
+      workflow_id: currentWorkflowIdRef.current,
+    };
+
+    // Funnel event: approval_resumed
+    const resumedProps: ApprovalEventProps = {
+      run_id: currentRunIdRef.current,
+      workflow_id: currentWorkflowIdRef.current,
+      node_id: state.pausedNodeId,
+      node_title: state.pausedNodeTitle,
+      approval_status: 'approved',
+      event_source: 'panel',
+    };
+    posthog.capture('approval_resumed', resumedProps);
 
     try {
       const result = await runNodes(
@@ -387,18 +434,18 @@ export function usePipelineExecution() {
       setIsExecuting(false);
       pausedStateRef.current = null;
       if (result.paused) {
-        posthog.capture('approval_requested');
+        // approval_requested already fired inside runNodes
       } else if (result.success) {
-        posthog.capture('workflow_run_completed');
+        posthog.capture('workflow_run_completed', runProps);
       } else {
-        posthog.capture('workflow_run_failed');
+        posthog.capture('workflow_run_failed', runProps);
       }
       return result;
     } catch (err: unknown) {
       setIsExecuting(false);
       pausedStateRef.current = null;
       const errorMsg = err instanceof Error ? err.message : 'Execution failed';
-      posthog.capture('workflow_run_failed');
+      posthog.capture('workflow_run_failed', runProps);
       return { success: false, logs: state.executionLogs, error: errorMsg };
     }
   }, [runNodes]);

@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       SELECT fm.id, fm.name, fm.description, fm.taxonomy_primary, fm.created_at,
              COUNT(fmm.failure_label_id) as failure_count,
              AVG(rt.score) as avg_score,
-             GROUP_CONCAT(DISTINCT hv.name) as harness_versions
+             STRING_AGG(hv.name, ',') as harness_versions
       FROM failure_modes fm
       LEFT JOIN failure_mode_members fmm ON fm.id = fmm.failure_mode_id
       LEFT JOIN failure_labels fl ON fmm.failure_label_id = fl.id
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
       sqlParams.push(runId);
     }
 
-    query += ' GROUP BY fm.id ORDER BY failure_count DESC';
+    query += ' GROUP BY fm.id, fm.name, fm.description, fm.taxonomy_primary, fm.created_at ORDER BY failure_count DESC';
 
     const modes = await db.prepare(query).all(...sqlParams) as any[];
 

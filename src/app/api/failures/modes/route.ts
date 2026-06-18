@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
       params.push(bench.id);
     }
     query += `
-      GROUP BY fm.id
+      GROUP BY fm.id, fm.name, fm.description, fm.taxonomy_primary, fm.benchmark_id
       ORDER BY failure_count DESC
     `;
     const rows = await db.prepare(query).all(...params) as any[];
