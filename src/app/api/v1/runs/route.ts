@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 export async function GET(req: NextRequest) {
@@ -15,40 +15,34 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-    let query = `
-      SELECT r.id as id, r.run_label, r.global_score, r.metrics, r.created_at,
-             b.name as benchmark, b.slug as benchmark_slug,
-             r.agent_name as agent_name,
-             hv.name as harness_version
-      FROM runs r
-      JOIN benchmarks b ON r.benchmark_id = b.id
-      LEFT JOIN harness_versions hv ON r.harness_version_id = hv.id
-      WHERE 1=1
-    `;
-    const params: any[] = [];
+    let query = supabaseServer
+      .from('runs')
+      .select(`
+        id, run_label, global_score, metrics, created_at, agent_name,
+        benchmarks!inner ( name, slug ),
+        harness_versions ( name )
+      `)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (benchmarkSlug) {
-      query += ' AND b.slug = ?';
-      params.push(benchmarkSlug);
+      query = query.eq('benchmarks.slug', benchmarkSlug);
     }
     if (agentName) {
-      query += ' AND r.agent_name = ?';
-      params.push(agentName);
+      query = query.eq('agent_name', agentName);
     }
     if (harnessVersion) {
-      query += ' AND hv.name = ?';
-      params.push(harnessVersion);
+      query = query.eq('harness_versions.name', harnessVersion);
     }
 
-    query += ' ORDER BY r.created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    const { data: runs, error } = await query;
 
-    const runs = await db.prepare(query).all(...params) as any[];
+    if (error) throw error;
 
-    const formatted = runs.map(r => {
+    const formatted = (runs || []).map((r: any) => {
       let metricsObj = { success_rate: 0, avg_score: 0, num_tasks: 0, num_failures: 0 };
       try {
-        const parsed = JSON.parse(r.metrics);
+        const parsed = typeof r.metrics === 'string' ? JSON.parse(r.metrics) : (r.metrics || {});
         metricsObj = {
           success_rate: parsed.pass_rate || 0,
           avg_score: parsed.avg_score || 0,
@@ -59,10 +53,10 @@ export async function GET(req: NextRequest) {
 
       return {
         id: r.id,
-        benchmark_slug: r.benchmark_slug,
+        benchmark_slug: r.benchmarks?.slug,
         run_label: r.run_label,
         agent_name: r.agent_name,
-        harness_version: r.harness_version || 'unknown',
+        harness_version: r.harness_versions?.name || 'unknown',
         metrics: metricsObj,
         created_at: new Date(r.created_at || Date.now()).toISOString()
       };

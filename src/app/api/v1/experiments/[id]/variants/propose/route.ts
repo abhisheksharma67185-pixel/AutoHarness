@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { proposeHarnessFixes } from '@/lib/llm';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 import { createJob, updateJob } from '@/lib/jobs';
@@ -24,7 +24,13 @@ export async function POST(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid experiment_id format', { field: 'experiment_id' }, 400);
     }
 
-    const exp = await db.prepare('SELECT * FROM experiments WHERE id = ?').get(idNum) as any;
+    const { data: exp, error: expError } = await supabaseServer
+      .from('experiments')
+      .select('*')
+      .eq('id', idNum)
+      .maybeSingle();
+
+    if (expError) throw expError;
     if (!exp) {
       return sendError('NOT_FOUND', `Experiment not found with ID: ${id}`, { experiment_id: id }, 404);
     }
@@ -36,13 +42,32 @@ export async function POST(req: NextRequest, { params }: Params) {
     } catch {}
 
     // Get the targets failure modes
-    const targets = await db.prepare('SELECT target_id FROM experiment_targets WHERE experiment_id = ? AND target_type = \'FAILURE_MODE\'').all(idNum) as any[];
+    const { data: targets, error: targetsError } = await supabaseServer
+      .from('experiment_targets')
+      .select('target_id')
+      .eq('experiment_id', idNum)
+      .eq('target_type', 'FAILURE_MODE');
+
+    if (targetsError) throw targetsError;
 
     // Fetch target failure modes detail
     const failureModes: any[] = [];
-    for (const t of targets) {
-      const fm = await db.prepare('SELECT name as title, description, taxonomy_primary as taxonomy_label FROM failure_modes WHERE id = ?').get(t.target_id) as any;
-      if (fm) failureModes.push(fm);
+    if (targets && targets.length > 0) {
+      const targetIds = targets.map(t => t.target_id);
+      const { data: modes, error: modesError } = await supabaseServer
+        .from('failure_modes')
+        .select('name, description, taxonomy_primary')
+        .in('id', targetIds);
+
+      if (modesError) throw modesError;
+
+      for (const fm of (modes || [])) {
+        failureModes.push({
+          title: fm.name,
+          description: fm.description,
+          taxonomy_label: fm.taxonomy_primary
+        });
+      }
     }
 
     if (failureModes.length === 0) {
@@ -58,17 +83,22 @@ export async function POST(req: NextRequest, { params }: Params) {
     const proposals = await proposeHarnessFixes(failureModes);
 
     // Get base harness name
-    const baseHarness = await db.prepare('SELECT name FROM harness_versions WHERE id = ?').get(exp.base_harness_version_id) as any;
+    const { data: baseHarness, error: hvError } = await supabaseServer
+      .from('harness_versions')
+      .select('name')
+      .eq('id', exp.base_harness_version_id)
+      .maybeSingle();
+
+    if (hvError) throw hvError;
     const baseHarnessName = baseHarness ? baseHarness.name : 'v1.0.0';
 
-    const insertTx = db.transaction(async () => {
-      const createdVariants: any[] = [];
+    const createdVariants: any[] = [];
 
-      for (let idx = 0; idx < proposals.length; idx++) {
-        const p = proposals[idx];
-        const varVersionName = `${baseHarnessName}-var-${idx + 1}-${Math.floor(1000 + Math.random() * 9000)}`;
+    for (let idx = 0; idx < proposals.length; idx++) {
+      const p = proposals[idx];
+      const varVersionName = `${baseHarnessName}-var-${idx + 1}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-        const configYaml = `
+      const configYaml = `
 # AutoHarness Candidate Configuration
 harness:
   version: "${varVersionName}"
@@ -84,7 +114,7 @@ tool_configuration:
   ordering_mode: "strict"
   notes: "${p.tool_config}"
 `;
-        const diff = `
+      const diff = `
 --- base_harness.yaml
 +++ candidate_variant_${idx + 1}.yaml
 @@ -10,4 +10,12 @@
@@ -95,47 +125,51 @@ tool_configuration:
 +    ${p.prompt_suggestion}
 +`;
 
-        // Insert harness version
-        const hvResult = await db.prepare(`
-          INSERT INTO harness_versions (name, config, notes)
-          VALUES (?, ?, ?)
-          RETURNING id
-        `).run(varVersionName, configYaml.trim(), `Proposed variant for experiment: ${exp.name}`);
-        const newHarnessVersionId = hvResult.lastInsertRowid;
+      // Insert harness version
+      const { data: hvRow, error: hvInsertError } = await supabaseServer
+        .from('harness_versions')
+        .insert({
+          name: varVersionName,
+          config: configYaml.trim(),
+          notes: `Proposed variant for experiment: ${exp.name}`
+        })
+        .select('id')
+        .single();
 
-        // Insert variant
-        const varResult = await db.prepare(`
-          INSERT INTO experiment_variants (experiment_id, harness_version_id, variant_label, config_diff, exported_config_uri, status)
-          VALUES (?, ?, ?, ?, ?, 'PLANNED')
-          RETURNING id
-        `).run(
-          idNum,
-          newHarnessVersionId,
-          p.title,
-          JSON.stringify({ diff: diff.trim() }),
-          `public/demo/runs/improved.json`
-        );
-        const variantId = varResult.lastInsertRowid;
+      if (hvInsertError || !hvRow) throw hvInsertError || new Error('Failed to insert variant harness version');
+      const newHarnessVersionId = hvRow.id;
 
-        createdVariants.push({
-          experiment_variant_id: `ev${variantId}`,
+      // Insert variant
+      const { data: varRow, error: varInsertError } = await supabaseServer
+        .from('experiment_variants')
+        .insert({
+          experiment_id: idNum,
+          harness_version_id: newHarnessVersionId,
           variant_label: p.title,
+          config_diff: JSON.stringify({ diff: diff.trim() }),
           exported_config_uri: `public/demo/runs/improved.json`,
-          status: 'planned'
-        });
-      }
+          status: 'PLANNED'
+        })
+        .select('id')
+        .single();
 
-      return createdVariants;
-    });
+      if (varInsertError || !varRow) throw varInsertError || new Error('Failed to insert variant');
+      const variantId = varRow.id;
 
-    const result = await insertTx();
+      createdVariants.push({
+        experiment_variant_id: `ev${variantId}`,
+        variant_label: p.title,
+        exported_config_uri: `public/demo/runs/improved.json`,
+        status: 'planned'
+      });
+    }
 
     const jobId = createJob('propose');
     updateJob(jobId, 'completed', 1.0);
 
     return sendSuccess({
       job_id: jobId,
-      variants: result
+      variants: createdVariants
     }, 202);
 
   } catch (err: any) {

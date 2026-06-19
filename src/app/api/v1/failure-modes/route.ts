@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 export async function GET(req: NextRequest) {
@@ -17,53 +17,98 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve benchmark
-    const bench = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmarkSlug) as any;
+    const { data: bench, error: benchError } = await supabaseServer
+      .from('benchmarks')
+      .select('id')
+      .eq('slug', benchmarkSlug)
+      .maybeSingle();
+
+    if (benchError) throw benchError;
+
     if (!bench) {
       return sendSuccess([]); // Return empty list if benchmark slug doesn't exist
     }
 
-    let query = `
-      SELECT fm.id, fm.name, fm.description, fm.taxonomy_primary, fm.created_at,
-             COUNT(fmm.failure_label_id) as failure_count,
-             AVG(rt.score) as avg_score,
-             STRING_AGG(hv.name, ',') as harness_versions
-      FROM failure_modes fm
-      LEFT JOIN failure_mode_members fmm ON fm.id = fmm.failure_mode_id
-      LEFT JOIN failure_labels fl ON fmm.failure_label_id = fl.id
-      LEFT JOIN run_tasks rt ON fl.run_task_id = rt.id
-      LEFT JOIN runs r ON rt.run_id = r.id
-      LEFT JOIN harness_versions hv ON r.harness_version_id = hv.id
-      WHERE fm.benchmark_id = ?
-    `;
-    const sqlParams: any[] = [bench.id];
+    // Fetch failure modes with member details via nested select
+    const { data: rows, error: queryError } = await supabaseServer
+      .from('failure_modes')
+      .select(`
+        id,
+        name,
+        description,
+        taxonomy_primary,
+        created_at,
+        failure_mode_members (
+          failure_label_id,
+          failure_labels (
+            run_task_id,
+            run_tasks (
+              score,
+              run_id,
+              runs (
+                id,
+                harness_versions ( name )
+              )
+            )
+          )
+        )
+      `)
+      .eq('benchmark_id', bench.id);
 
-    if (runId) {
-      query += ' AND r.id = ?';
-      sqlParams.push(runId);
-    }
+    if (queryError) throw queryError;
 
-    query += ' GROUP BY fm.id, fm.name, fm.description, fm.taxonomy_primary, fm.created_at ORDER BY failure_count DESC';
+    const formatted = [];
+    for (const fm of (rows || [])) {
+      const members = fm.failure_mode_members || [];
+      
+      let totalScore = 0;
+      let scoreCount = 0;
+      let matchCount = 0;
+      const harnessVersionsSet = new Set<string>();
 
-    const modes = await db.prepare(query).all(...sqlParams) as any[];
+      for (const m of members) {
+        const fl = Array.isArray(m.failure_labels) ? m.failure_labels[0] : m.failure_labels;
+        const rt = Array.isArray(fl?.run_tasks) ? fl.run_tasks[0] : fl?.run_tasks;
+        const run = Array.isArray(rt?.runs) ? rt.runs[0] : rt?.runs;
+        const hv = Array.isArray(run?.harness_versions) ? run.harness_versions[0] : run?.harness_versions;
 
-    const formatted = modes.map(m => {
-      let versions: string[] = [];
-      if (m.harness_versions) {
-        versions = m.harness_versions.split(',');
+        // If runId is provided, filter by it
+        if (runId && run?.id !== runId) {
+          continue;
+        }
+
+        matchCount++;
+
+        if (rt?.score !== undefined && rt?.score !== null) {
+          totalScore += rt.score;
+          scoreCount++;
+        }
+
+        if (hv?.name) {
+          harnessVersionsSet.add(hv.name);
+        }
       }
 
-      return {
-        id: `fm${m.id}`,
+      // If we filtered by runId and there are no matching members, skip this mode
+      if (runId && matchCount === 0) {
+        continue;
+      }
+
+      formatted.push({
+        id: `fm${fm.id}`,
         benchmark_slug: benchmarkSlug,
-        name: m.name,
-        description: m.description,
-        taxonomy_primary: (m.taxonomy_primary || 'other').toLowerCase(),
-        failure_count: m.failure_count || 0,
-        avg_score: m.avg_score !== null ? m.avg_score : 0.0,
-        affected_harness_versions: versions,
-        created_at: new Date(m.created_at || Date.now()).toISOString()
-      };
-    });
+        name: fm.name,
+        description: fm.description,
+        taxonomy_primary: (fm.taxonomy_primary || 'other').toLowerCase(),
+        failure_count: matchCount,
+        avg_score: scoreCount > 0 ? totalScore / scoreCount : 0.0,
+        affected_harness_versions: Array.from(harnessVersionsSet),
+        created_at: new Date(fm.created_at || Date.now()).toISOString()
+      });
+    }
+
+    // Sort by failure_count descending
+    formatted.sort((a, b) => b.failure_count - a.failure_count);
 
     return sendSuccess(formatted);
   } catch (err: any) {

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 interface Params {
@@ -15,54 +15,50 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   try {
     const { id } = await params;
-
-    // Check if run exists, if not sync it from dev.db
-    const runExists = await db.prepare('SELECT id FROM runs WHERE id = ?').get(id);
-    if (!runExists) {
-      const { syncRunDevToLocal } = await import('@/lib/ingest-helper');
-      await syncRunDevToLocal(id);
-    }
-
     const { searchParams } = new URL(req.url);
     const statusParam = searchParams.get('status');
     const taxonomyParam = searchParams.get('taxonomy_primary');
 
-    let query = `
-      SELECT rt.id, rt.benchmark_task_id, rt.status, rt.score,
-             bt.title as task_title,
-             fl.taxonomy_primary as taxonomy_primary,
-             fl.diagnosis_text as diagnosis_text
-      FROM run_tasks rt
-      JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id
-      LEFT JOIN failure_labels fl ON rt.id = fl.run_task_id
-      WHERE rt.run_id = ?
-    `;
-    const sqlParams: any[] = [id];
+    let query = supabaseServer
+      .from('run_tasks')
+      .select(`
+        id,
+        status,
+        score,
+        benchmark_tasks!inner ( id, title ),
+        failure_labels ( id, taxonomy_primary, diagnosis_text )
+      `)
+      .eq('run_id', id);
 
     if (statusParam) {
-      query += ' AND rt.status = ?';
-      sqlParams.push(statusParam.toUpperCase());
+      query = query.eq('status', statusParam.toUpperCase());
     }
+
+    query = query.order('id', { ascending: true });
+
+    const { data: tasks, error: tasksError } = await query;
+    if (tasksError) throw tasksError;
+
+    let filteredTasks = tasks || [];
     if (taxonomyParam) {
-      query += ' AND fl.taxonomy_primary = ?';
-      sqlParams.push(taxonomyParam.toUpperCase());
+      filteredTasks = filteredTasks.filter((t: any) => {
+        const fl = Array.isArray(t.failure_labels) ? t.failure_labels[0] : t.failure_labels;
+        return fl?.taxonomy_primary?.toUpperCase() === taxonomyParam.toUpperCase();
+      });
     }
 
-    query += ' ORDER BY rt.id ASC';
-
-    const tasks = await db.prepare(query).all(...sqlParams) as any[];
-
-    const formatted = tasks.map(t => {
+    const formatted = filteredTasks.map((t: any) => {
+      const fl = Array.isArray(t.failure_labels) ? t.failure_labels[0] : t.failure_labels;
       const isFailure = t.status !== 'PASS';
       return {
         id: `rt${t.id}`,
-        benchmark_task_id: `bt${t.benchmark_task_id}`,
-        task_title: t.task_title,
+        benchmark_task_id: `bt${t.benchmark_tasks?.id}`,
+        task_title: t.benchmark_tasks?.title,
         status: (t.status || 'unknown').toLowerCase(),
         score: t.score,
         is_failure: isFailure,
-        taxonomy_primary: t.taxonomy_primary ? t.taxonomy_primary.toLowerCase() : null,
-        diagnosis_text: t.diagnosis_text || null
+        taxonomy_primary: fl?.taxonomy_primary ? fl.taxonomy_primary.toLowerCase() : null,
+        diagnosis_text: fl?.diagnosis_text || null
       };
     });
 

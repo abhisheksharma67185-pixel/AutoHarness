@@ -1,4 +1,4 @@
-import { db } from './db';
+import { supabaseServer } from './supabase-server';
 import { diagnoseFailure } from './llm';
 import { clusterFailuresLocally } from './cluster';
 
@@ -56,26 +56,54 @@ export async function runBackgroundDiagnosis(jobId: string, runId: string) {
     updateJob(jobId, 'running', 0.05);
 
     // Fetch run
-    const run = await db.prepare('SELECT id FROM runs WHERE id = ?').get(runId);
+    const { data: run, error: runError } = await supabaseServer
+      .from('runs')
+      .select('id')
+      .eq('id', runId)
+      .maybeSingle();
+
+    if (runError) throw runError;
     if (!run) {
       updateJob(jobId, 'failed', 0.0, 'Run not found');
       return;
     }
 
     // Fetch all failed tasks for the run
-    const failedTasks = await db.prepare(`
-      SELECT rt.id, rt.run_id, bt.task_id, bt.title as slug, bt.category, bt.difficulty,
-             bt.metadata as bt_metadata
-      FROM run_tasks rt
-      JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id
-      WHERE rt.run_id = ? AND rt.status = 'FAIL'
-    `).all(runId) as any[];
+    const { data: failedTasks, error: tasksError } = await supabaseServer
+      .from('run_tasks')
+      .select(`
+        id,
+        run_id,
+        benchmark_tasks!inner (
+          id,
+          task_id,
+          title,
+          category,
+          difficulty,
+          metadata
+        )
+      `)
+      .eq('run_id', runId)
+      .eq('status', 'FAIL');
 
-    // Parse description from metadata JSON in JS (avoids SQLite-specific json_extract)
-    const failedTasksWithDesc = failedTasks.map((t: any) => {
+    if (tasksError) throw tasksError;
+
+    // Parse description from metadata JSON
+    const failedTasksWithDesc = (failedTasks || []).map((t: any) => {
       let metaObj: any = {};
-      try { metaObj = JSON.parse(t.bt_metadata || '{}'); } catch {}
-      return { ...t, description: metaObj.description || '' };
+      const btMetadata = t.benchmark_tasks?.metadata;
+      try {
+        metaObj = typeof btMetadata === 'string' ? JSON.parse(btMetadata) : (btMetadata || {});
+      } catch {}
+      return {
+        id: t.id,
+        run_id: t.run_id,
+        task_id: t.benchmark_tasks?.task_id,
+        slug: t.benchmark_tasks?.title, // bt.title is task slug
+        category: t.benchmark_tasks?.category,
+        difficulty: t.benchmark_tasks?.difficulty,
+        description: metaObj.description || ''
+      };
     });
 
     if (failedTasksWithDesc.length === 0) {
@@ -87,14 +115,15 @@ export async function runBackgroundDiagnosis(jobId: string, runId: string) {
       const t = failedTasksWithDesc[i];
       
       // Fetch trace steps
-      const dbSteps = await db.prepare(`
-        SELECT id, run_task_id, step_index, step_type, content, metadata
-        FROM trace_steps
-        WHERE run_task_id = ?
-        ORDER BY step_index ASC
-      `).all(t.id) as any[];
+      const { data: dbSteps, error: stepsError } = await supabaseServer
+        .from('trace_steps')
+        .select('id, run_task_id, step_index, step_type, content, metadata')
+        .eq('run_task_id', t.id)
+        .order('step_index', { ascending: true });
 
-      const cleanSteps = dbSteps.map(s => {
+      if (stepsError) throw stepsError;
+
+      const cleanSteps = (dbSteps || []).map(s => {
         let type = 'LOG';
         const st = (s.step_type || '').toUpperCase();
         if (st === 'ASSISTANT') type = 'agent';
@@ -125,18 +154,22 @@ export async function runBackgroundDiagnosis(jobId: string, runId: string) {
       }
 
       // Upsert failure label
-      await db.prepare(`
-        INSERT INTO failure_labels (run_task_id, is_failure, source, score, diagnosis_text, taxonomy_primary, taxonomy_secondary)
-        VALUES (?, 1, 'LLM_JUDGE', NULL, ?, ?, '[]')
-        ON CONFLICT(run_task_id) DO UPDATE SET
-          diagnosis_text = excluded.diagnosis_text,
-          taxonomy_primary = excluded.taxonomy_primary,
-          source = 'LLM_JUDGE',
-          updated_at = CURRENT_TIMESTAMP
-      `).run(t.id, diagnosis.diagnosis_text, mappedTaxonomy);
+      const { error: upsertError } = await supabaseServer
+        .from('failure_labels')
+        .upsert({
+          run_task_id: t.id,
+          is_failure: 1,
+          source: 'LLM_JUDGE',
+          score: null,
+          diagnosis_text: diagnosis.diagnosis_text,
+          taxonomy_primary: mappedTaxonomy,
+          taxonomy_secondary: '[]'
+        }, { onConflict: 'run_task_id' });
+
+      if (upsertError) throw upsertError;
 
       // Update progress incrementally
-      const progress = 0.05 + (i + 1) / failedTasksWithDesc.length * 0.90;
+      const progress = 0.05 + ((i + 1) / failedTasksWithDesc.length) * 0.90;
       updateJob(jobId, 'running', progress);
     }
 
@@ -158,23 +191,50 @@ export async function runBackgroundReclustering(jobId: string, benchmarkId: numb
     }
 
     // Fetch all failed tasks with their failure labels for the target runs
-    const placeholders = runIds.map(() => '?').join(',');
-    const failedTasks = await db.prepare(`
-      SELECT rt.id, rt.run_id, bt.task_id, bt.title as slug, bt.category, bt.difficulty,
-             bt.metadata as bt_metadata,
-             fl.diagnosis_text, fl.taxonomy_primary as taxonomy_label, fl.id as label_id
-      FROM run_tasks rt
-      JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id
-      JOIN failure_labels fl ON rt.id = fl.run_task_id
-      WHERE rt.run_id IN (${placeholders})
-    `).all(...runIds) as any[];
+    const { data: failedTasks, error: failedError } = await supabaseServer
+      .from('run_tasks')
+      .select(`
+        id,
+        run_id,
+        benchmark_tasks!inner (
+          id,
+          task_id,
+          title,
+          category,
+          difficulty,
+          metadata
+        ),
+        failure_labels!inner (
+          id,
+          diagnosis_text,
+          taxonomy_primary
+        )
+      `)
+      .in('run_id', runIds);
 
-    // Parse description from metadata JSON in JS
-    const failedTasksParsed = failedTasks.map((t: any) => {
+    if (failedError) throw failedError;
+
+    // Parse description from metadata JSON
+    const failedTasksParsed = (failedTasks || []).map((t: any) => {
       let metaObj: any = {};
-      try { metaObj = JSON.parse(t.bt_metadata || '{}'); } catch {}
-      return { ...t, description: metaObj.description || '' };
-    });
+      const btMetadata = t.benchmark_tasks?.metadata;
+      try {
+        metaObj = typeof btMetadata === 'string' ? JSON.parse(btMetadata) : (btMetadata || {});
+      } catch {}
+      const fl = Array.isArray(t.failure_labels) ? t.failure_labels[0] : t.failure_labels;
+      return {
+        id: t.id,
+        run_id: t.run_id,
+        task_id: t.benchmark_tasks?.task_id,
+        slug: t.benchmark_tasks?.title,
+        category: t.benchmark_tasks?.category,
+        difficulty: t.benchmark_tasks?.difficulty,
+        description: metaObj.description || '',
+        diagnosis_text: fl?.diagnosis_text || '',
+        taxonomy_label: fl?.taxonomy_primary || 'OTHER',
+        label_id: fl?.id
+      };
+    }).filter(t => t.label_id !== undefined);
 
     updateJob(jobId, 'running', 0.3);
 
@@ -183,42 +243,69 @@ export async function runBackgroundReclustering(jobId: string, benchmarkId: numb
       return;
     }
 
-    // Run transaction to re-cluster
-    const reclusterTx = db.transaction(async () => {
-      // 1. Delete previous failure mode members and failure modes for this benchmark
-      await db.prepare(`
-        DELETE FROM failure_mode_members 
-        WHERE failure_mode_id IN (SELECT id FROM failure_modes WHERE benchmark_id = ?)
-      `).run(benchmarkId);
+    // 1. Delete previous failure mode members and failure modes for this benchmark
+    const { data: modesToDelete, error: selectModesError } = await supabaseServer
+      .from('failure_modes')
+      .select('id')
+      .eq('benchmark_id', benchmarkId);
 
-      await db.prepare('DELETE FROM failure_modes WHERE benchmark_id = ?').run(benchmarkId);
+    if (selectModesError) throw selectModesError;
 
-      // 2. Perform clustering
-      const clusters = clusterFailuresLocally(failedTasksParsed);
+    const modeIds = (modesToDelete || []).map(m => m.id);
 
-      // 3. Insert new FailureModes and FailureModeMembers
-      for (const cluster of clusters) {
-        const fmResult = await db.prepare(`
-          INSERT INTO failure_modes (benchmark_id, name, description, taxonomy_primary, stats)
-          VALUES (?, ?, ?, ?, '{}')
-          RETURNING id
-        `).run(benchmarkId, cluster.title, cluster.description, cluster.taxonomy_label);
-        const failureModeId = fmResult.lastInsertRowid;
+    if (modeIds.length > 0) {
+      const { error: deleteMembersError } = await supabaseServer
+        .from('failure_mode_members')
+        .delete()
+        .in('failure_mode_id', modeIds);
+      if (deleteMembersError) throw deleteMembersError;
+    }
 
-        for (const memberId of cluster.memberIds) {
-          const taskObj = failedTasksParsed.find((f: any) => f.id === memberId);
-          if (taskObj) {
-            await db.prepare(`
-              INSERT INTO failure_mode_members (failure_mode_id, failure_label_id, distance)
-              VALUES (?, ?, 0.0)
-              ON CONFLICT DO NOTHING
-            `).run(failureModeId, taskObj.label_id);
-          }
+    const { error: deleteModesError } = await supabaseServer
+      .from('failure_modes')
+      .delete()
+      .eq('benchmark_id', benchmarkId);
+    if (deleteModesError) throw deleteModesError;
+
+    // 2. Perform clustering
+    const clusters = clusterFailuresLocally(failedTasksParsed as any);
+
+    // 3. Insert new FailureModes and FailureModeMembers
+    for (const cluster of clusters) {
+      const { data: fmRow, error: fmError } = await supabaseServer
+        .from('failure_modes')
+        .insert({
+          benchmark_id: benchmarkId,
+          name: cluster.title,
+          description: cluster.description,
+          taxonomy_primary: cluster.taxonomy_label,
+          stats: '{}'
+        })
+        .select('id')
+        .single();
+      if (fmError) throw fmError;
+      const failureModeId = fmRow.id;
+
+      const membersData = [];
+      for (const memberId of cluster.memberIds) {
+        const taskObj = failedTasksParsed.find((f: any) => f.id === memberId);
+        if (taskObj) {
+          membersData.push({
+            failure_mode_id: failureModeId,
+            failure_label_id: taskObj.label_id,
+            distance: 0.0
+          });
         }
       }
-    });
 
-    await reclusterTx();
+      if (membersData.length > 0) {
+        const { error: membersError } = await supabaseServer
+          .from('failure_mode_members')
+          .insert(membersData);
+        if (membersError) throw membersError;
+      }
+    }
+
     updateJob(jobId, 'running', 0.9);
     updateJob(jobId, 'completed', 1.0);
   } catch (err: any) {

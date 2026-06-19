@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { db } from './db';
+import { supabaseServer } from './supabase-server';
 import { TraceStep } from './types';
 
 // Predefined command outputs for known tasks to ensure safe, reliable demo simulation
@@ -183,41 +183,106 @@ export async function runOnlineEvaluation(
 ): Promise<void> {
   try {
     // Update eval_run status to RUNNING
-    await db.prepare("UPDATE eval_runs SET status = 'RUNNING' WHERE id = ?").run(evalRunId);
+    const { error: updateStartError } = await supabaseServer
+      .from('eval_runs')
+      .update({ status: 'RUNNING' })
+      .eq('id', evalRunId);
+    if (updateStartError) throw updateStartError;
 
     // Fetch harness version configuration
-    const hv = await db.prepare('SELECT name, config FROM harness_versions WHERE id = ?').get(harnessVersionId) as any;
-    const hvConfig = hv ? JSON.parse(hv.config) : {};
+    const { data: hv, error: hvError } = await supabaseServer
+      .from('harness_versions')
+      .select('name, config')
+      .eq('id', harnessVersionId)
+      .maybeSingle();
+    if (hvError) throw hvError;
+
+    const hvConfig = hv?.config ? JSON.parse(hv.config) : {};
     
     // Fetch benchmark and cases
-    const suite = await db.prepare('SELECT benchmark_id, name FROM eval_suites WHERE id = ?').get(suiteId) as any;
-    const casesRows = await db.prepare(`
-      SELECT ec.*, bt.task_id, bt.title as slug, bt.category, bt.difficulty,
-             bt.metadata as bt_metadata
-      FROM eval_cases ec
-      JOIN eval_suite_members esm ON ec.id = esm.eval_case_id
-      JOIN benchmark_tasks bt ON ec.benchmark_task_id = bt.id
-      WHERE esm.eval_suite_id = ?
-    `).all(suiteId) as any[];
+    const { data: suite, error: suiteError } = await supabaseServer
+      .from('eval_suites')
+      .select('benchmark_id, name')
+      .eq('id', suiteId)
+      .maybeSingle();
+    if (suiteError) throw suiteError;
+    if (!suite) throw new Error(`Evaluation suite ${suiteId} not found`);
 
-    const cases = casesRows.map((c: any) => {
+    const { data: members, error: membersError } = await supabaseServer
+      .from('eval_suite_members')
+      .select(`
+        eval_suite_id,
+        eval_cases (
+          id,
+          benchmark_task_id,
+          failure_label_id,
+          input_spec,
+          expected_spec,
+          scoring_config,
+          created_by,
+          created_at,
+          benchmark_tasks (
+            id,
+            task_id,
+            title,
+            category,
+            difficulty,
+            metadata
+          )
+        )
+      `)
+      .eq('eval_suite_id', suiteId);
+    if (membersError) throw membersError;
+
+    const cases = (members || []).map((m: any) => {
+      const ec = m.eval_cases;
+      if (!ec) return null;
+      const bt = ec.benchmark_tasks;
       let meta: any = {};
-      try { meta = JSON.parse(c.bt_metadata || '{}'); } catch {}
-      return { ...c, description: meta.description || '' };
-    });
+      try {
+        meta = typeof bt?.metadata === 'string' ? JSON.parse(bt.metadata) : (bt?.metadata || {});
+      } catch {}
+      return {
+        id: ec.id,
+        benchmark_task_id: ec.benchmark_task_id,
+        failure_label_id: ec.failure_label_id,
+        input_spec: ec.input_spec,
+        expected_spec: ec.expected_spec,
+        scoring_config: ec.scoring_config,
+        created_by: ec.created_by,
+        created_at: ec.created_at,
+        task_id: bt?.task_id,
+        slug: bt?.title, // bt.title is the task slug
+        category: bt?.category,
+        difficulty: bt?.difficulty,
+        description: meta.description || ''
+      };
+    }).filter(Boolean) as any[];
 
     // 1. Insert new 'runs' record for this live evaluation
     const runId = `run-online-eval-${evalRunId}`;
     const runLabel = `Live Evaluation Run (Suite: ${suite.name})`;
     const initialMetrics = JSON.stringify({ pass_rate: 0.0, avg_score: 0.0, total_tasks: cases.length });
     
-    await db.prepare(`
-      INSERT INTO runs (id, benchmark_id, agent_name, harness_version_id, run_label, metrics, raw_artifact_uri)
-      VALUES (?, ?, 'SigmaAgent (Live)', ?, ?, ?, ?)
-    `).run(runId, suite.benchmark_id, harnessVersionId, runLabel, initialMetrics, `public/scratch/eval-run-${evalRunId}/`);
+    const { error: runInsertError } = await supabaseServer
+      .from('runs')
+      .insert({
+        id: runId,
+        benchmark_id: suite.benchmark_id,
+        agent_name: 'SigmaAgent (Live)',
+        harness_version_id: harnessVersionId,
+        run_label: runLabel,
+        metrics: initialMetrics,
+        raw_artifact_uri: `public/scratch/eval-run-${evalRunId}/`
+      });
+    if (runInsertError) throw runInsertError;
 
     // Link newly generated run to our eval_run
-    await db.prepare('UPDATE eval_runs SET run_id = ? WHERE id = ?').run(runId, evalRunId);
+    const { error: updateEvalRunIdError } = await supabaseServer
+      .from('eval_runs')
+      .update({ run_id: runId })
+      .eq('id', evalRunId);
+    if (updateEvalRunIdError) throw updateEvalRunIdError;
 
     let passedCasesCount = 0;
     let scoreSum = 0;
@@ -228,12 +293,19 @@ export async function runOnlineEvaluation(
       fs.mkdirSync(sandboxDir, { recursive: true });
 
       // Insert run_task record
-      const rtResult = await db.prepare(`
-        INSERT INTO run_tasks (run_id, benchmark_task_id, status, score, raw_result, started_at)
-        VALUES (?, ?, 'UNKNOWN', 0.0, '{}', CURRENT_TIMESTAMP)
-        RETURNING id
-      `).run(runId, c.benchmark_task_id);
-      const runTaskId = rtResult.lastInsertRowid;
+      const { data: rtRow, error: rtError } = await supabaseServer
+        .from('run_tasks')
+        .insert({
+          run_id: runId,
+          benchmark_task_id: c.benchmark_task_id,
+          status: 'UNKNOWN',
+          score: 0.0,
+          raw_result: '{}'
+        })
+        .select('id')
+        .single();
+      if (rtError) throw rtError;
+      const runTaskId = rtRow.id;
 
       // Define default system prompt
       const systemPrompt = `Task description: ${c.description}\n` + (hvConfig.agent_guidelines?.system_prompt_patch || '');
@@ -258,10 +330,16 @@ export async function runOnlineEvaluation(
         }
 
         // 1. Log Agent Thought step
-        await db.prepare(`
-          INSERT INTO trace_steps (run_task_id, step_index, step_type, content, metadata)
-          VALUES (?, ?, 'ASSISTANT', ?, '{}')
-        `).run(runTaskId, stepIndex++, nextStep.thought);
+        const { error: stepThoughtError } = await supabaseServer
+          .from('trace_steps')
+          .insert({
+            run_task_id: runTaskId,
+            step_index: stepIndex++,
+            step_type: 'ASSISTANT',
+            content: nextStep.thought,
+            metadata: '{}'
+          });
+        if (stepThoughtError) throw stepThoughtError;
         
         stepsHistory.push({ type: 'agent', content: nextStep.thought });
 
@@ -271,17 +349,21 @@ export async function runOnlineEvaluation(
         }
 
         // 2. Log Command step
-        await db.prepare(`
-          INSERT INTO trace_steps (run_task_id, step_index, step_type, content, metadata)
-          VALUES (?, ?, 'COMMAND', ?, '{}')
-        `).run(runTaskId, stepIndex++, nextStep.command);
+        const { error: stepCommandError } = await supabaseServer
+          .from('trace_steps')
+          .insert({
+            run_task_id: runTaskId,
+            step_index: stepIndex++,
+            step_type: 'COMMAND',
+            content: nextStep.command,
+            metadata: '{}'
+          });
+        if (stepCommandError) throw stepCommandError;
 
         stepsHistory.push({ type: 'tool_call', content: nextStep.command });
 
         // Execute command (hybrid runner: check simulation mapping first, else run in local shell if safe)
         let commandOutput = '';
-        let cmdStatus = 'FAIL';
-        let cmdScore = 0.0;
 
         const simulatedMatch = SIMULATED_COMMANDS[c.slug]?.[nextStep.command];
 
@@ -314,10 +396,16 @@ export async function runOnlineEvaluation(
         }
 
         // 3. Log Command Output step
-        await db.prepare(`
-          INSERT INTO trace_steps (run_task_id, step_index, step_type, content, metadata)
-          VALUES (?, ?, 'TOOL_RESULT', ?, '{}')
-        `).run(runTaskId, stepIndex++, commandOutput);
+        const { error: stepResultError } = await supabaseServer
+          .from('trace_steps')
+          .insert({
+            run_task_id: runTaskId,
+            step_index: stepIndex++,
+            step_type: 'TOOL_RESULT',
+            content: commandOutput,
+            metadata: '{}'
+          });
+        if (stepResultError) throw stepResultError;
 
         stepsHistory.push({ type: 'tool_output', content: nextStep.command, output: commandOutput });
       }
@@ -333,25 +421,44 @@ export async function runOnlineEvaluation(
       scoreSum += finalScore;
 
       // Update run_tasks with final status and score
-      await db.prepare(`
-        UPDATE run_tasks
-        SET status = ?, score = ?, finished_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).run(finalStatus, finalScore, runTaskId);
+      const { error: updateRunTaskError } = await supabaseServer
+        .from('run_tasks')
+        .update({
+          status: finalStatus,
+          score: finalScore,
+          finished_at: new Date().toISOString()
+        })
+        .eq('id', runTaskId);
+      if (updateRunTaskError) throw updateRunTaskError;
 
       // Insert failure label diagnostic if failed
       if (finalStatus !== 'PASS') {
-        await db.prepare(`
-          INSERT INTO failure_labels (run_task_id, is_failure, source, score, diagnosis_text, taxonomy_primary, taxonomy_secondary)
-          VALUES (?, 1, 'LLM_JUDGE', ?, 'Task failed during online re-run execution.', 'TOOL_MISUSE', '[]')
-        `).run(runTaskId, finalScore);
+        const { error: insertLabelError } = await supabaseServer
+          .from('failure_labels')
+          .insert({
+            run_task_id: runTaskId,
+            is_failure: 1,
+            source: 'LLM_JUDGE',
+            score: finalScore,
+            diagnosis_text: 'Task failed during online re-run execution.',
+            taxonomy_primary: 'TOOL_MISUSE',
+            taxonomy_secondary: '[]'
+          });
+        if (insertLabelError) throw insertLabelError;
       }
 
       // Insert eval_results
-      await db.prepare(`
-        INSERT INTO eval_results (eval_run_id, eval_case_id, status, score, raw_output, judge_metadata)
-        VALUES (?, ?, ?, ?, ?, '{}')
-      `).run(evalRunId, c.id, finalStatus, finalScore, JSON.stringify({ steps: stepsHistory }));
+      const { error: insertResultError } = await supabaseServer
+        .from('eval_results')
+        .insert({
+          eval_run_id: evalRunId,
+          eval_case_id: c.id,
+          status: finalStatus,
+          score: finalScore,
+          raw_output: JSON.stringify({ steps: stepsHistory }),
+          judge_metadata: '{}'
+        });
+      if (insertResultError) throw insertResultError;
     }
 
     const totalCases = cases.length;
@@ -365,24 +472,33 @@ export async function runOnlineEvaluation(
     };
 
     // 3. Update eval_run and run records with final metrics
-    await db.prepare(`
-      UPDATE eval_runs
-      SET status = 'COMPLETED', metrics = ?, finished_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(JSON.stringify(metricsObj), evalRunId);
+    const { error: updateEvalFinishedError } = await supabaseServer
+      .from('eval_runs')
+      .update({
+        status: 'COMPLETED',
+        metrics: JSON.stringify(metricsObj),
+        finished_at: new Date().toISOString()
+      })
+      .eq('id', evalRunId);
+    if (updateEvalFinishedError) throw updateEvalFinishedError;
 
-    await db.prepare(`
-      UPDATE runs
-      SET metrics = ?
-      WHERE id = ?
-    `).run(JSON.stringify({ pass_rate: finalPassRate, avg_score: finalAvgScore, total_tasks: totalCases }), runId);
+    const { error: updateRunFinishedError } = await supabaseServer
+      .from('runs')
+      .update({
+        metrics: JSON.stringify({ pass_rate: finalPassRate, avg_score: finalAvgScore, total_tasks: totalCases })
+      })
+      .eq('id', runId);
+    if (updateRunFinishedError) throw updateRunFinishedError;
 
   } catch (error: any) {
     console.error('Online Rerun Job Failed:', error);
-    await db.prepare(`
-      UPDATE eval_runs
-      SET status = 'FAILED', metrics = ?, finished_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(JSON.stringify({ error: error.message || 'Unknown error' }), evalRunId);
+    await supabaseServer
+      .from('eval_runs')
+      .update({
+        status: 'FAILED',
+        metrics: JSON.stringify({ error: error.message || 'Unknown error' }),
+        finished_at: new Date().toISOString()
+      })
+      .eq('id', evalRunId);
   }
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { fetchWithBypass } from '@/lib/api-helper';
 
 const BACKEND = process.env.VERCEL_URL
@@ -17,61 +17,78 @@ export async function GET(req: NextRequest) {
       const cleanIdStr = suite_id.startsWith('es') ? suite_id.slice(2) : suite_id;
       const suiteId = parseInt(cleanIdStr, 10);
 
-      const suite = await db.prepare(`
-        SELECT es.id, es.name, es.description, es.created_at, b.slug as benchmark_slug
-        FROM eval_suites es
-        JOIN benchmarks b ON es.benchmark_id = b.id
-        WHERE es.id = ?
-      `).get(suiteId) as any;
+      // Fetch suite
+      const { data: suite, error: suiteError } = await supabaseServer
+        .from('eval_suites')
+        .select(`
+          id, name, description, created_at,
+          benchmarks!inner ( slug )
+        `)
+        .eq('id', suiteId)
+        .single();
 
-      if (!suite) {
+      if (suiteError || !suite) {
         return NextResponse.json({ error: 'Suite not found' }, { status: 404 });
       }
 
-      const casesRows = await db.prepare(`
-        SELECT ec.id, ec.benchmark_task_id, ec.input_spec, ec.expected_spec, bt.task_id as slug, bt.metadata as bt_metadata
-        FROM eval_cases ec
-        JOIN eval_suite_members esm ON ec.id = esm.eval_case_id
-        LEFT JOIN benchmark_tasks bt ON ec.benchmark_task_id = bt.id
-        WHERE esm.eval_suite_id = ?
-      `).all(suiteId) as any[];
+      // Fetch cases through eval_suite_members
+      const { data: casesRows } = await supabaseServer
+        .from('eval_suite_members')
+        .select(`
+          eval_cases!inner (
+            id,
+            benchmark_task_id,
+            input_spec,
+            expected_spec,
+            benchmark_tasks (
+              task_id,
+              metadata
+            )
+          )
+        `)
+        .eq('eval_suite_id', suiteId);
 
-      const cases = casesRows.map(c => {
+      const cases = (casesRows || []).map((row: any) => {
+        const c = row.eval_cases;
         let inputObj: any = {};
         let expectedObj: any = {};
         let btMetaObj: any = {};
-        try { inputObj = JSON.parse(c.input_spec); } catch {}
-        try { expectedObj = JSON.parse(c.expected_spec); } catch {}
-        try { btMetaObj = JSON.parse(c.bt_metadata || '{}'); } catch {}
+        try { inputObj = typeof c.input_spec === 'string' ? JSON.parse(c.input_spec) : (c.input_spec || {}); } catch {}
+        try { expectedObj = typeof c.expected_spec === 'string' ? JSON.parse(c.expected_spec) : (c.expected_spec || {}); } catch {}
+        try { btMetaObj = typeof c.benchmark_tasks?.metadata === 'string' ? JSON.parse(c.benchmark_tasks.metadata) : (c.benchmark_tasks?.metadata || {}); } catch {}
         return {
           id: c.id,
           task_id: c.benchmark_task_id || c.id,
-          slug: c.slug || 'N/A',
+          slug: c.benchmark_tasks?.task_id || 'N/A',
           category: inputObj.category || 'unknown',
           difficulty: inputObj.difficulty || 'medium',
           description: inputObj.original_instructions || inputObj.description || btMetaObj.description || '',
-          input_spec: c.input_spec,
-          expected_spec: c.expected_spec,
+          input_spec: typeof c.input_spec === 'string' ? c.input_spec : JSON.stringify(c.input_spec || {}),
+          expected_spec: typeof c.expected_spec === 'string' ? c.expected_spec : JSON.stringify(c.expected_spec || {}),
         };
       });
 
-      const runsRows = await db.prepare(`
-        SELECT er.id, er.created_at, er.status, er.metrics, hv.name as harness_version_id
-        FROM eval_runs er
-        LEFT JOIN harness_versions hv ON er.harness_version_id = hv.id
-        WHERE er.eval_suite_id = ?
-        ORDER BY er.id DESC
-      `).all(suiteId) as any[];
+      // Fetch eval runs for this suite
+      const { data: runsRows } = await supabaseServer
+        .from('eval_runs')
+        .select(`
+          id, created_at, status, metrics,
+          harness_versions ( name )
+        `)
+        .eq('eval_suite_id', suiteId)
+        .order('id', { ascending: false });
 
-      const runs = runsRows.map(r => {
+      const runs = (runsRows || []).map((r: any) => {
         let metricsObj: any = {};
-        try { metricsObj = JSON.parse(r.metrics); } catch {}
+        try {
+          metricsObj = typeof r.metrics === 'string' ? JSON.parse(r.metrics) : (r.metrics || {});
+        } catch {}
         return {
           id: r.id,
           created_at: r.created_at,
           status: r.status,
-          metrics: r.metrics,
-          harness_version: r.harness_version_id || 'Unknown',
+          metrics: typeof r.metrics === 'string' ? r.metrics : JSON.stringify(r.metrics || {}),
+          harness_version: r.harness_versions?.name || 'Unknown',
           agent: 'N/A',
           pass_rate: metricsObj.pass_rate ?? 0,
         };
@@ -82,102 +99,41 @@ export async function GET(req: NextRequest) {
           id: suite.id,
           name: suite.name,
           description: suite.description,
-          benchmark_id: suite.benchmark_slug,
+          benchmark_id: (suite as any).benchmarks?.slug,
         },
         cases,
         runs
       });
     }
 
-    const suitesRows = await db.prepare(`
-      SELECT es.id, es.name, es.description, b.slug as benchmark_slug,
-             COUNT(esm.eval_case_id) as case_count
-      FROM eval_suites es
-      JOIN benchmarks b ON es.benchmark_id = b.id
-      LEFT JOIN eval_suite_members esm ON es.id = esm.eval_suite_id
-      GROUP BY es.id, es.name, es.description, b.slug
-      ORDER BY es.id ASC
-    `).all() as any[];
+    // List all suites with case counts
+    const { data: suitesRows, error: suitesError } = await supabaseServer
+      .from('eval_suites')
+      .select(`
+        id, name, description,
+        benchmarks!inner ( slug ),
+        eval_suite_members ( eval_case_id )
+      `)
+      .order('id', { ascending: true });
 
-    const suites = suitesRows.map(s => ({
+    if (suitesError) {
+      throw suitesError;
+    }
+
+    const suites = (suitesRows || []).map((s: any) => ({
       id: s.id,
       name: s.name,
       description: s.description,
-      benchmark_id: s.benchmark_slug,
-      case_count: s.case_count || 0,
+      benchmark_id: s.benchmarks?.slug,
+      case_count: Array.isArray(s.eval_suite_members) ? s.eval_suite_members.length : 0,
       recent_pass_rate: null,
       recent_harness_version: null,
     }));
 
     return NextResponse.json({ evalSuites: suites });
   } catch (err: any) {
-    console.error('Direct evals query failed, falling back to HTTP:', err);
-    try {
-      const { searchParams } = new URL(req.url);
-      const suite_id = searchParams.get('suite_id');
-
-      if (suite_id) {
-        const [suiteRes, casesRes, runsRes] = await Promise.all([
-          fetch(`${BACKEND}/eval-suites/${suite_id}`, { cache: 'no-store' }),
-          fetch(`${BACKEND}/eval-suites/${suite_id}/cases`, { cache: 'no-store' }),
-          fetch(`${BACKEND}/eval-runs?eval_suite_id=${encodeURIComponent(suite_id)}`, { cache: 'no-store' }),
-        ]);
-
-        if (!suiteRes.ok) {
-          const d = await suiteRes.json().catch(() => ({}));
-          return NextResponse.json({ error: d.detail || 'Suite not found' }, { status: suiteRes.status });
-        }
-
-        const suiteData = await suiteRes.json();
-        const casesData = casesRes.ok ? await casesRes.json().catch(() => ({ data: [] })) : { data: [] };
-        const runsData = runsRes.ok ? await runsRes.json().catch(() => ({ data: [] })) : { data: [] };
-
-        const suite = suiteData.data || suiteData;
-
-        const cases = (casesData.data || []).map((c: any) => ({
-          id: c.id,
-          task_id: c.benchmark_task_id || c.id,
-          slug: c.benchmark_task_id || 'N/A',
-          category: c.input_spec?.category || 'unknown',
-          difficulty: c.input_spec?.difficulty || 'medium',
-          description: c.input_spec?.original_instructions || c.input_spec?.description || '',
-          input_spec: typeof c.input_spec === 'string' ? c.input_spec : JSON.stringify(c.input_spec || {}),
-          expected_spec: typeof c.expected_spec === 'string' ? c.expected_spec : JSON.stringify(c.expected_spec || {}),
-        }));
-
-        const runs = (runsData.data || []).map((r: any) => ({
-          id: r.id,
-          created_at: r.created_at,
-          status: r.status,
-          metrics: typeof r.metrics === 'string' ? r.metrics : JSON.stringify(r.metrics || {}),
-          harness_version: r.harness_version_id || 'Unknown',
-          agent: r.experiment_variant_id || 'N/A',
-          pass_rate: r.metrics?.pass_rate ?? (typeof r.metrics === 'string' ? JSON.parse(r.metrics || '{}')?.pass_rate ?? 0 : 0),
-        }));
-
-        return NextResponse.json({ suite, cases, runs });
-      }
-
-      const res = await fetch(`${BACKEND}/eval-suites/`, { cache: 'no-store' });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        return NextResponse.json({ error: d.detail || 'Failed to fetch suites' }, { status: res.status });
-      }
-      const data = await res.json();
-      const suites = (data.data || []).map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        description: s.description,
-        benchmark_id: s.benchmark_slug,
-        case_count: s.case_count ?? 0,
-        recent_pass_rate: null,
-        recent_harness_version: null,
-      }));
-
-      return NextResponse.json({ evalSuites: suites });
-    } catch (fallbackErr: any) {
-      return NextResponse.json({ error: fallbackErr.message }, { status: 500 });
-    }
+    console.error('Evals query error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
@@ -212,14 +168,6 @@ export async function POST(req: NextRequest) {
       }
 
       const suiteId = data.data?.id || data.id;
-      if (suiteId) {
-        try {
-          const { syncEvalSuitesDevToLocal } = await import('@/lib/ingest-helper');
-          await syncEvalSuitesDevToLocal(suiteId);
-        } catch (syncErr) {
-          console.error('Failed to sync new eval suite:', syncErr);
-        }
-      }
 
       return NextResponse.json({
         success: true,
@@ -253,14 +201,6 @@ export async function POST(req: NextRequest) {
       }
 
       const suiteId = data.data?.id || data.id;
-      if (suiteId) {
-        try {
-          const { syncEvalSuitesDevToLocal } = await import('@/lib/ingest-helper');
-          await syncEvalSuitesDevToLocal(suiteId);
-        } catch (syncErr) {
-          console.error('Failed to sync new failure mode eval suite:', syncErr);
-        }
-      }
 
       return NextResponse.json({
         success: true,
@@ -311,15 +251,6 @@ export async function POST(req: NextRequest) {
       const data = await res.json();
       if (!res.ok) {
         return NextResponse.json({ error: data.detail || 'Failed to promote failure' }, { status: res.status });
-      }
-
-      if (eval_suite_id) {
-        try {
-          const { syncEvalSuitesDevToLocal } = await import('@/lib/ingest-helper');
-          await syncEvalSuitesDevToLocal(eval_suite_id);
-        } catch (syncErr) {
-          console.error('Failed to sync eval suite after promoting failure:', syncErr);
-        }
       }
 
       return NextResponse.json({

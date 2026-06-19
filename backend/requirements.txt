@@ -3,10 +3,9 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 
-# Database (SQLAlchemy async + drivers)
+# Database (SQLAlchemy + Postgres driver)
 sqlalchemy[asyncio]>=2.0.0
-aiosqlite>=0.20.0          # SQLite fallback for local dev (zero-setup)
-asyncpg>=0.29.0            # Postgres async driver (used when DATABASE_URL=postgresql+asyncpg://...)
+asyncpg>=0.29.0            # Postgres async driver (required — set DATABASE_URL in .env)
 alembic>=1.13.0
 
 # Config

@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     environment: str = "development"
 
-    database_url: str = f"sqlite+aiosqlite:///{BACKEND_DIR}/dev.db"
+    database_url: Optional[str] = None
 
     llm_profile: str = "local_llama_cpp"
     llm_base_url: str = "http://localhost:8080/v1"
@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
 
 def _to_async_postgres_url(url: str) -> str:
-    """Convert a sync Postgres URL to async (aiosqlite-compatible) form."""
+    """Convert a sync Postgres URL to async (asyncpg-compatible) form."""
     if url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql+asyncpg://", 1)
     if url.startswith("postgresql://") and "+asyncpg" not in url:
@@ -49,27 +49,17 @@ def _to_async_postgres_url(url: str) -> str:
 
 @lru_cache
 def get_settings() -> Settings:
-    import os
-    import shutil
-
     settings = Settings()
 
-    # Pydantic already loaded DATABASE_URL from .env or env var into settings.database_url.
-    # If it's a Postgres URL, ensure we use the async driver.
+    if not settings.database_url:
+        raise ValueError(
+            "DATABASE_URL environment variable is required. "
+            "Set it to your PostgreSQL connection string (e.g., from Supabase)."
+        )
+
     if settings.database_url.startswith("postgres"):
         settings.database_url = _to_async_postgres_url(settings.database_url)
         print(f"Using PostgreSQL: {settings.database_url}")
-
-    elif os.environ.get("VERCEL"):
-        src_db = f"{BACKEND_DIR}/dev.db"
-        dst_db = "/tmp/dev.db"
-        if os.path.exists(src_db) and not os.path.exists(dst_db):
-            try:
-                shutil.copy2(src_db, dst_db)
-                print(f"Copied DB to {dst_db}")
-            except Exception as e:
-                print(f"Failed to copy DB: {e}")
-        settings.database_url = f"sqlite+aiosqlite:///{dst_db}"
 
     return settings
 

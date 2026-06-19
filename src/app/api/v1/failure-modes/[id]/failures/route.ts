@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 interface Params {
@@ -22,27 +22,44 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid failure_mode_id format', { field: 'failure_mode_id' }, 400);
     }
 
-    const failures = await db.prepare(`
-      SELECT fl.id as failure_label_id, fl.run_task_id, rt.run_id, fl.diagnosis_text, fl.taxonomy_primary, rt.score,
-             bt.title as task_title, fmm.distance as distance_from_centroid
-      FROM failure_mode_members fmm
-      JOIN failure_labels fl ON fmm.failure_label_id = fl.id
-      JOIN run_tasks rt ON fl.run_task_id = rt.id
-      JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id
-      WHERE fmm.failure_mode_id = ?
-      ORDER BY fl.id ASC
-    `).all(idNum) as any[];
+    const { data: members, error } = await supabaseServer
+      .from('failure_mode_members')
+      .select(`
+        distance,
+        failure_labels (
+          id,
+          run_task_id,
+          diagnosis_text,
+          taxonomy_primary,
+          run_tasks (
+            score,
+            run_id,
+            benchmark_tasks (
+              title
+            )
+          )
+        )
+      `)
+      .eq('failure_mode_id', idNum);
 
-    const formatted = failures.map(f => ({
-      failure_label_id: `fl${f.failure_label_id}`,
-      run_task_id: `rt${f.run_task_id}`,
-      run_id: f.run_id,
-      task_title: f.task_title,
-      diagnosis_text: f.diagnosis_text,
-      taxonomy_primary: (f.taxonomy_primary || 'other').toLowerCase(),
-      score: f.score,
-      distance_from_centroid: f.distance_from_centroid !== null && f.distance_from_centroid !== undefined ? f.distance_from_centroid : 0.0
-    }));
+    if (error) throw error;
+
+    const formatted = (members || []).map((m: any) => {
+      const fl = Array.isArray(m.failure_labels) ? m.failure_labels[0] : m.failure_labels;
+      const rt = Array.isArray(fl?.run_tasks) ? fl.run_tasks[0] : fl?.run_tasks;
+      const bt = Array.isArray(rt?.benchmark_tasks) ? rt.benchmark_tasks[0] : rt?.benchmark_tasks;
+
+      return {
+        failure_label_id: fl ? `fl${fl.id}` : null,
+        run_task_id: fl ? `rt${fl.run_task_id}` : null,
+        run_id: rt?.run_id || null,
+        task_title: bt?.title || null,
+        diagnosis_text: fl?.diagnosis_text || null,
+        taxonomy_primary: fl?.taxonomy_primary ? fl.taxonomy_primary.toLowerCase() : 'other',
+        score: rt?.score !== undefined ? rt.score : 0.0,
+        distance_from_centroid: m.distance !== null && m.distance !== undefined ? m.distance : 0.0
+      };
+    });
 
     return sendSuccess(formatted);
   } catch (err: any) {

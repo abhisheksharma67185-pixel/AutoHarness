@@ -48,7 +48,7 @@ Browser (Next.js / React Flow)
               └── FastAPI backend (localhost:8001)
                     ├── /ollama/generate    → Ollama (localhost:11434)
                     ├── /http/request       → External APIs
-                    ├── /database/query     → SQLite / Postgres
+                    ├── /database/query     → Postgres (Supabase)
                     └── /approvals/…        → In-memory approval store
 ```
 
@@ -78,8 +78,10 @@ Browser (Next.js / React Flow)
 ```bash
 cd backend
 pip install -r requirements.txt
-DATABASE_URL=sqlite:///./dev.db uvicorn app.main:app --port 8001
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/autoharness uvicorn app.main:app --port 8001
 ```
+
+> **Note:** The backend now requires a PostgreSQL database. Use your Supabase connection string for production, or a local Postgres for development.
 
 ### 2. Start the frontend
 

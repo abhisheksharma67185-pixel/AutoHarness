@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 interface Params {
@@ -22,39 +22,26 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid eval_run_id format', { field: 'eval_run_id' }, 400);
     }
 
-    let results = await db.prepare(`
-      SELECT * FROM eval_results
-      WHERE eval_run_id = ?
-      ORDER BY id ASC
-    `).all(idNum) as any[];
+    const { data: results, error: resultsError } = await supabaseServer
+      .from('eval_results')
+      .select('*')
+      .eq('eval_run_id', idNum);
 
-    if (results.length === 0) {
-      try {
-        const { syncEvalRunsDevToLocal } = await import('@/lib/ingest-helper');
-        await syncEvalRunsDevToLocal();
-        results = await db.prepare(`
-          SELECT * FROM eval_results
-          WHERE eval_run_id = ?
-          ORDER BY id ASC
-        `).all(idNum) as any[];
-      } catch (syncErr) {
-        console.error('Failed to lazy sync eval results:', syncErr);
-      }
-    }
+    if (resultsError) throw resultsError;
 
-    const formatted = results.map(r => {
+    const formatted = (results || []).map((r: any) => {
       let rawOut = {};
       try {
-        rawOut = JSON.parse(r.raw_output || '{}');
+        rawOut = typeof r.raw_output === 'string' ? JSON.parse(r.raw_output || '{}') : (r.raw_output || {});
       } catch {}
 
       let judgeMeta = {};
       try {
-        judgeMeta = JSON.parse(r.judge_metadata || '{}');
+        judgeMeta = typeof r.judge_metadata === 'string' ? JSON.parse(r.judge_metadata || '{}') : (r.judge_metadata || {});
       } catch {}
 
       return {
-        id: `eres${r.id}`,
+        id: r.id ? `eres${r.id}` : `eres${r.eval_run_id}_${r.eval_case_id}`,
         eval_run_id: `er${r.eval_run_id}`,
         eval_case_id: `ec${r.eval_case_id}`,
         status: (r.status || 'unknown').toLowerCase(),

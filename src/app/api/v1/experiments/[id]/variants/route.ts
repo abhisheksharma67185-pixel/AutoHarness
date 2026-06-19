@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 interface Params {
@@ -22,34 +22,52 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid experiment_id format', { field: 'experiment_id' }, 400);
     }
 
-    let exp = await db.prepare('SELECT id FROM experiments WHERE id = ?').get(idNum) as any;
-    if (!exp) {
-      try {
-        const { syncExperimentsDevToLocal } = await import('@/lib/ingest-helper');
-        await syncExperimentsDevToLocal();
-        exp = await db.prepare('SELECT id FROM experiments WHERE id = ?').get(idNum) as any;
-      } catch (syncErr) {
-        console.error('Failed to lazy sync experiments in variants route:', syncErr);
-      }
-    }
+    const { data: exp, error: expError } = await supabaseServer
+      .from('experiments')
+      .select('id')
+      .eq('id', idNum)
+      .maybeSingle();
+
+    if (expError) throw expError;
     if (!exp) {
       return sendError('NOT_FOUND', `Experiment not found with ID: ${id}`, { experiment_id: id }, 404);
     }
 
-    const variants = await db.prepare(`
-      SELECT ev.*, hv.name as harness_version_name, r.id as run_id, r.metrics as run_metrics
-      FROM experiment_variants ev
-      JOIN harness_versions hv ON ev.harness_version_id = hv.id
-      LEFT JOIN runs r ON ev.harness_version_id = r.harness_version_id
-      WHERE ev.experiment_id = ?
-    `).all(idNum) as any[];
+    const { data: variants, error: varError } = await supabaseServer
+      .from('experiment_variants')
+      .select(`
+        id,
+        variant_label,
+        config_diff,
+        exported_config_uri,
+        status,
+        harness_version_id,
+        harness_versions ( name ),
+        experiment_variant_eval_summaries (
+          delta_pass_rate,
+          regression_flag
+        )
+      `)
+      .eq('experiment_id', idNum);
+
+    if (varError) throw varError;
 
     const formattedVariants = [];
-    for (const v of variants) {
+    for (const v of (variants || [])) {
+      // Fetch associated run metrics for this harness_version_id
+      const { data: run, error: runError } = await supabaseServer
+        .from('runs')
+        .select('metrics')
+        .eq('harness_version_id', v.harness_version_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       let metrics = null;
-      if (v.run_metrics) {
+      const runMetrics = run?.metrics;
+      if (runMetrics) {
         try {
-          const m = JSON.parse(v.run_metrics);
+          const m = typeof runMetrics === 'string' ? JSON.parse(runMetrics) : (runMetrics || {});
           metrics = {
             success_rate: m.pass_rate !== undefined ? m.pass_rate : 0.0,
             avg_score: m.avg_score !== undefined ? m.avg_score : 0.0,
@@ -63,10 +81,10 @@ export async function GET(req: NextRequest, { params }: Params) {
       let gatePassed: boolean | null = null;
 
       if (v.status === 'EVALUATED' || v.status === 'PROMOTED' || v.status === 'REJECTED') {
-        const summaries = await db.prepare('SELECT delta_pass_rate, regression_flag FROM experiment_variant_eval_summaries WHERE experiment_variant_id = ?').all(v.id) as any[];
+        const summaries = v.experiment_variant_eval_summaries || [];
         if (summaries.length > 0) {
           targetSuiteDelta = summaries[0].delta_pass_rate || 0.0;
-          const hasRegression = summaries.some(s => s.regression_flag === 1);
+          const hasRegression = summaries.some((s: any) => s.regression_flag === 1);
           if (hasRegression) {
             regressionFlags.push('guard_suite_regression');
           }
@@ -78,7 +96,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
       let diffObj = {};
       try {
-        diffObj = JSON.parse(v.config_diff || '{}');
+        diffObj = typeof v.config_diff === 'string' ? JSON.parse(v.config_diff || '{}') : (v.config_diff || {});
       } catch {}
 
       formattedVariants.push({

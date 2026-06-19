@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { fetchWithBypass } from '@/lib/api-helper';
 
 const BACKEND = process.env.VERCEL_URL
@@ -17,129 +17,124 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Missing run_id' }, { status: 400 });
     }
 
-    try {
-      // 1. Find distinct failure modes that have member failure labels in this run_id
-      const queryModes = `
-        SELECT DISTINCT fm.id, fm.name, fm.description, fm.taxonomy_primary
-        FROM failure_modes fm
-        JOIN failure_mode_members fmm ON fm.id = fmm.failure_mode_id
-        JOIN failure_labels fl ON fmm.failure_label_id = fl.id
-        JOIN run_tasks rt ON fl.run_task_id = rt.id
-        WHERE rt.run_id = ?
-      `;
-      const modes = await db.prepare(queryModes).all(run_id) as any[];
+    // Fetch failure modes associated with this run through the chain:
+    // failure_modes -> failure_mode_members -> failure_labels -> run_tasks (filtered by run_id)
+    const { data: modeRows, error: modesError } = await supabaseServer
+      .from('failure_mode_members')
+      .select(`
+        failure_mode_id,
+        failure_modes!inner (
+          id,
+          name,
+          description,
+          taxonomy_primary
+        ),
+        failure_labels!inner (
+          id,
+          diagnosis_text,
+          taxonomy_primary,
+          run_task_id,
+          run_tasks!inner (
+            id,
+            run_id,
+            status,
+            score,
+            task_slug,
+            raw_result,
+            benchmark_task_id,
+            benchmark_tasks!inner (
+              task_id,
+              title,
+              category,
+              difficulty
+            )
+          )
+        )
+      `)
+      .eq('failure_labels.run_tasks.run_id', run_id);
 
-      // Group by name (trimmed)
-      const groupedModes: Record<string, any[]> = {};
-      for (const fm of modes) {
-        const name = (fm.name || '').trim();
-        if (!groupedModes[name]) {
-          groupedModes[name] = [];
-        }
-        groupedModes[name].push(fm);
-      }
-
-      const sortedNames = Object.keys(groupedModes).sort();
-      const enrichedModes: any[] = [];
-
-      for (const name of sortedNames) {
-        const fmList = groupedModes[name];
-        const primaryFm = fmList[0];
-
-        // Fetch associated failure labels for all modes in this group for this run_id
-        const fmIds = fmList.map(f => f.id);
-        const placeholders = fmIds.map(() => '?').join(',');
-        const membersLabels = await db.prepare(`
-          SELECT fl.*
-          FROM failure_labels fl
-          JOIN failure_mode_members fmm ON fl.id = fmm.failure_label_id
-          JOIN run_tasks rt ON fl.run_task_id = rt.id
-          WHERE fmm.failure_mode_id IN (${placeholders}) AND rt.run_id = ?
-        `).all(...fmIds, run_id) as any[];
-
-        // Deduplicate labels by ID
-        const uniqueLabelsMap: Record<number, any> = {};
-        for (const fl of membersLabels) {
-          uniqueLabelsMap[fl.id] = fl;
-        }
-        const uniqueMembersLabels = Object.values(uniqueLabelsMap);
-
-        const members: any[] = [];
-        const scores: number[] = [];
-
-        for (const fl of uniqueMembersLabels) {
-          const rt = await db.prepare(`
-            SELECT rt.*, bt.task_id as benchmark_task_id, bt.title as task_title, bt.category, bt.difficulty
-            FROM run_tasks rt
-            JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id
-            WHERE rt.id = ?
-          `).get(fl.run_task_id) as any;
-
-          if (rt) {
-            let desc = '';
-            if (rt.raw_result) {
-              try {
-                const rawTask = typeof rt.raw_result === 'string' ? JSON.parse(rt.raw_result) : rt.raw_result;
-                desc = rawTask?.description || '';
-              } catch (_) {}
-            }
-            if (!desc && rt.task_title) {
-              desc = rt.task_title;
-            }
-
-            members.push({
-              id: rt.id,
-              status: rt.status,
-              score: rt.score,
-              task_id: rt.benchmark_task_id,
-              slug: rt.task_slug || `task-${rt.benchmark_task_id}`,
-              category: rt.category,
-              difficulty: rt.difficulty,
-              description: desc,
-              diagnosis_text: fl.diagnosis_text,
-              taxonomy_label: (fl.taxonomy_primary || 'OTHER').toUpperCase()
-            });
-            scores.push(rt.score);
-          }
-        }
-
-        // Sort members by task_id and slug
-        members.sort((a, b) => {
-          if (a.task_id !== b.task_id) return String(a.task_id).localeCompare(String(b.task_id));
-          return String(a.slug).localeCompare(String(b.slug));
-        });
-
-        const count = members.length;
-        const avgScore = count > 0 ? scores.reduce((sum, s) => sum + s, 0) / count : 0.0;
-
-        enrichedModes.push({
-          id: primaryFm.id,
-          benchmark_slug: 'terminal-bench@2.0',
-          name: name,
-          title: name,
-          description: primaryFm.description,
-          taxonomy_primary: primaryFm.taxonomy_primary,
-          taxonomy_label: (primaryFm.taxonomy_primary || 'other').toUpperCase(),
-          severity: 'medium',
-          failure_count: count,
-          avg_score: avgScore,
-          trend: 'stable',
-          members: members
-        });
-      }
-
-      return NextResponse.json({ failureModes: enrichedModes });
-    } catch (dbErr: any) {
-      console.error('Direct SQLite query for failures failed, falling back to HTTP:', dbErr);
-      const response = await fetch(`${BACKEND}/runs/failure-modes?run_id=${encodeURIComponent(run_id)}`, { cache: 'no-store' });
-      const data = await response.json();
-
-      if (!response.ok) {
-        return NextResponse.json({ error: data.detail || 'Failed to fetch failure modes' }, { status: response.status });
-      }
-
-      return NextResponse.json(data);
+    if (modesError) {
+      throw modesError;
     }
+
+    // Group by failure mode name
+    const groupedModes: Record<string, { fm: any; members: any[] }> = {};
+
+    for (const row of (modeRows || [])) {
+      const fm = row.failure_modes as any;
+      const fl = row.failure_labels as any;
+      const rt = fl?.run_tasks as any;
+      const bt = rt?.benchmark_tasks as any;
+
+      if (!fm || !fl || !rt || !bt) continue;
+
+      const name = (fm.name || '').trim();
+      if (!groupedModes[name]) {
+        groupedModes[name] = { fm, members: [] };
+      }
+
+      let desc = '';
+      if (rt.raw_result) {
+        try {
+          const rawTask = typeof rt.raw_result === 'string' ? JSON.parse(rt.raw_result) : rt.raw_result;
+          desc = rawTask?.description || '';
+        } catch (_) {}
+      }
+      if (!desc && bt.title) {
+        desc = bt.title;
+      }
+
+      // Deduplicate by run_task id
+      const exists = groupedModes[name].members.some(m => m.id === rt.id);
+      if (!exists) {
+        groupedModes[name].members.push({
+          id: rt.id,
+          status: rt.status,
+          score: rt.score,
+          task_id: bt.task_id,
+          slug: rt.task_slug || `task-${bt.task_id}`,
+          category: bt.category,
+          difficulty: bt.difficulty,
+          description: desc,
+          diagnosis_text: fl.diagnosis_text,
+          taxonomy_label: (fl.taxonomy_primary || 'OTHER').toUpperCase()
+        });
+      }
+    }
+
+    const sortedNames = Object.keys(groupedModes).sort();
+    const enrichedModes: any[] = [];
+
+    for (const name of sortedNames) {
+      const { fm, members } = groupedModes[name];
+
+      // Sort members by task_id and slug
+      members.sort((a, b) => {
+        if (a.task_id !== b.task_id) return String(a.task_id).localeCompare(String(b.task_id));
+        return String(a.slug).localeCompare(String(b.slug));
+      });
+
+      const count = members.length;
+      const scores = members.map(m => m.score);
+      const avgScore = count > 0 ? scores.reduce((sum, s) => sum + s, 0) / count : 0.0;
+
+      enrichedModes.push({
+        id: fm.id,
+        benchmark_slug: 'terminal-bench@2.0',
+        name: name,
+        title: name,
+        description: fm.description,
+        taxonomy_primary: fm.taxonomy_primary,
+        taxonomy_label: (fm.taxonomy_primary || 'other').toUpperCase(),
+        severity: 'medium',
+        failure_count: count,
+        avg_score: avgScore,
+        trend: 'stable',
+        members: members
+      });
+    }
+
+    return NextResponse.json({ failureModes: enrichedModes });
   } catch (err: any) {
     console.error('Fetch failures error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

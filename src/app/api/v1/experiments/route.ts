@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 export async function POST(req: NextRequest) {
@@ -22,7 +22,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Resolve benchmark
-    const bench = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
+    const { data: bench, error: benchError } = await supabaseServer
+      .from('benchmarks')
+      .select('id')
+      .eq('slug', benchmark_slug)
+      .maybeSingle();
+
+    if (benchError) throw benchError;
     if (!bench) {
       return sendError('NOT_FOUND', `Benchmark not found with slug: ${benchmark_slug}`, { benchmark_slug }, 404);
     }
@@ -32,11 +38,28 @@ export async function POST(req: NextRequest) {
     if (harnessName.startsWith('hv-')) {
       harnessName = harnessName.slice(3);
     }
-    let hv = await db.prepare('SELECT id, name FROM harness_versions WHERE name = ?').get(harnessName) as any;
-    if (!hv) {
+
+    let hv: any = null;
+    const { data: hvByName, error: hvNameError } = await supabaseServer
+      .from('harness_versions')
+      .select('id, name')
+      .eq('name', harnessName)
+      .maybeSingle();
+
+    if (hvNameError) throw hvNameError;
+
+    if (hvByName) {
+      hv = hvByName;
+    } else {
       const hvIdNum = parseInt(harnessName, 10);
       if (!isNaN(hvIdNum)) {
-        hv = await db.prepare('SELECT id, name FROM harness_versions WHERE id = ?').get(hvIdNum) as any;
+        const { data: hvById, error: hvIdError } = await supabaseServer
+          .from('harness_versions')
+          .select('id, name')
+          .eq('id', hvIdNum)
+          .maybeSingle();
+        if (hvIdError) throw hvIdError;
+        if (hvById) hv = hvById;
       }
     }
 
@@ -44,41 +67,48 @@ export async function POST(req: NextRequest) {
       return sendError('NOT_FOUND', `Base harness version not found: ${base_harness_version_id}`, { base_harness_version_id }, 404);
     }
 
-    const expTx = db.transaction(async () => {
-      // 1. Insert Experiment
-      const expResult = await db.prepare(`
-        INSERT INTO experiments (name, benchmark_id, base_harness_version_id, target_description, config_template, regression_policy)
-        VALUES (?, ?, ?, ?, '{}', ?)
-        RETURNING id
-      `).run(
+    // 1. Insert Experiment
+    const { data: newExp, error: expError } = await supabaseServer
+      .from('experiments')
+      .insert({
         name,
-        bench.id,
-        hv.id,
-        target_description || '',
-        JSON.stringify(regression_policy || {})
-      );
-      const experimentId = expResult.lastInsertRowid;
+        benchmark_id: bench.id,
+        base_harness_version_id: hv.id,
+        target_description: target_description || '',
+        config_template: '{}',
+        regression_policy: JSON.stringify(regression_policy || {})
+      })
+      .select('id')
+      .single();
 
-      // 2. Insert Targets
-      if (targets && Array.isArray(targets)) {
-        for (const t of targets) {
-          const typeStr = (t.target_type || '').toUpperCase();
-          const cleanTargetId = t.target_id.startsWith('fm') ? t.target_id.slice(2) : (t.target_id.startsWith('es') ? t.target_id.slice(2) : t.target_id);
-          const targetIdNum = parseInt(cleanTargetId, 10);
+    if (expError || !newExp) throw expError || new Error('Failed to create experiment');
+    const experimentId = newExp.id;
 
-          if (isNaN(targetIdNum)) continue;
+    // 2. Insert Targets
+    if (targets && Array.isArray(targets)) {
+      const targetsData = [];
+      for (const t of targets) {
+        const typeStr = (t.target_type || '').toUpperCase();
+        const cleanTargetId = t.target_id.startsWith('fm') ? t.target_id.slice(2) : (t.target_id.startsWith('es') ? t.target_id.slice(2) : t.target_id);
+        const targetIdNum = parseInt(cleanTargetId, 10);
 
-          await db.prepare(`
-            INSERT INTO experiment_targets (experiment_id, target_type, target_id, desired_delta)
-            VALUES (?, ?, ?, ?)
-          `).run(experimentId, typeStr, targetIdNum, t.desired_delta);
-        }
+        if (isNaN(targetIdNum)) continue;
+
+        targetsData.push({
+          experiment_id: experimentId,
+          target_type: typeStr,
+          target_id: targetIdNum,
+          desired_delta: t.desired_delta
+        });
       }
 
-      return experimentId;
-    });
-
-    const experimentId = await expTx();
+      if (targetsData.length > 0) {
+        const { error: targetError } = await supabaseServer
+          .from('experiment_targets')
+          .insert(targetsData);
+        if (targetError) throw targetError;
+      }
+    }
 
     return sendSuccess({
       experiment_id: `exp${experimentId}`
@@ -96,44 +126,37 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    try {
-      const { syncExperimentsDevToLocal } = await import('@/lib/ingest-helper');
-      await syncExperimentsDevToLocal();
-    } catch (syncErr) {
-      console.error('Failed to lazy sync experiments on list:', syncErr);
-    }
-
     const { searchParams } = new URL(req.url);
     const benchmarkSlug = searchParams.get('benchmark_slug');
 
-    let query = `
-      SELECT e.id, e.name, e.target_description, e.created_at, b.slug as benchmark_slug,
-             hv.name as base_harness_version
-      FROM experiments e
-      JOIN benchmarks b ON e.benchmark_id = b.id
-      JOIN harness_versions hv ON e.base_harness_version_id = hv.id
-      WHERE 1=1
-    `;
-    const sqlParams: any[] = [];
+    let query = supabaseServer
+      .from('experiments')
+      .select(`
+        id,
+        name,
+        target_description,
+        created_at,
+        benchmarks!inner ( slug ),
+        harness_versions ( name ),
+        experiment_targets (
+          target_type,
+          target_id,
+          desired_delta
+        )
+      `);
 
     if (benchmarkSlug) {
-      query += ' AND b.slug = ?';
-      sqlParams.push(benchmarkSlug);
+      query = query.eq('benchmarks.slug', benchmarkSlug);
     }
 
-    query += ' ORDER BY e.id ASC';
+    query = query.order('id', { ascending: true });
 
-    const experiments = await db.prepare(query).all(...sqlParams) as any[];
+    const { data: experiments, error } = await query;
+    if (error) throw error;
 
-    const formatted = [];
-    for (const e of experiments) {
-      const targets = await db.prepare(`
-        SELECT target_type, target_id, desired_delta
-        FROM experiment_targets
-        WHERE experiment_id = ?
-      `).all(e.id) as any[];
-
-      const formattedTargets = targets.map(t => {
+    const formatted = (experiments || []).map((e: any) => {
+      const targets = e.experiment_targets || [];
+      const formattedTargets = targets.map((t: any) => {
         const typeLower = (t.target_type || '').toLowerCase();
         const prefix = typeLower === 'failure_mode' ? 'fm' : (typeLower === 'eval_suite' ? 'es' : '');
         return {
@@ -143,16 +166,16 @@ export async function GET(req: NextRequest) {
         };
       });
 
-      formatted.push({
+      return {
         id: `exp${e.id}`,
         name: e.name,
-        benchmark_slug: e.benchmark_slug,
-        base_harness_version_id: `hv-${e.base_harness_version}`,
+        benchmark_slug: e.benchmarks?.slug,
+        base_harness_version_id: `hv-${e.harness_versions?.name || 'unknown'}`,
         target_description: e.target_description || '',
         targets: formattedTargets,
         created_at: new Date(e.created_at || Date.now()).toISOString()
-      });
-    }
+      };
+    });
 
     return sendSuccess(formatted);
   } catch (err: any) {

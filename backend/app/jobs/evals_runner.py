@@ -62,8 +62,8 @@ def execute_eval_run(db: Session, eval_run_id: str) -> None:
                     db.query(RunTask)
                     .join(Run, RunTask.run_id == Run.id)
                     .filter(
-                        Run.harness_version == eval_run.harness_version_id,
-                        RunTask.benchmark_task_id == case.benchmark_task_id
+                        Run.harness_version_id == eval_run.harness_version_id,
+                        RunTask.benchmark_task_id == case.benchmark_task_id_int
                     )
                     .order_by(RunTask.started_at.desc())
                     .first()
@@ -160,7 +160,7 @@ def execute_eval_run(db: Session, eval_run_id: str) -> None:
                     db.query(RunTask)
                     .filter(
                         RunTask.run_id == new_run.id,
-                        RunTask.benchmark_task_id == case.benchmark_task_id
+                        RunTask.benchmark_task_id == case.benchmark_task_id_int
                     )
                     .first()
                 )

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 interface Params {
@@ -27,17 +27,19 @@ export async function GET(req: NextRequest, { params }: Params) {
     const limit = parseInt(searchParams.get('limit') || '100', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-    const tasks = await db.prepare(`
-      SELECT * FROM benchmark_tasks
-      WHERE benchmark_id = ?
-      ORDER BY id ASC
-      LIMIT ? OFFSET ?
-    `).all(idNum, limit, offset) as any[];
+    const { data: tasks, error } = await supabaseServer
+      .from('benchmark_tasks')
+      .select('*')
+      .eq('benchmark_id', idNum)
+      .order('id', { ascending: true })
+      .range(offset, offset + limit - 1);
 
-    const formatted = tasks.map(t => {
+    if (error) throw error;
+
+    const formatted = (tasks || []).map(t => {
       let meta = {};
       try {
-        meta = JSON.parse(t.metadata || '{}');
+        meta = typeof t.metadata === 'string' ? JSON.parse(t.metadata || '{}') : (t.metadata || {});
       } catch {}
       return {
         id: `bt${t.id}`,

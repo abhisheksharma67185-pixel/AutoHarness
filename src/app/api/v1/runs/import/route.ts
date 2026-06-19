@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { performIngestion } from '@/lib/ingest-helper';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
@@ -56,10 +56,23 @@ export async function POST(req: NextRequest) {
 
     // Resolve benchmark and check duplicate
     let benchmarkId = 0;
-    const bench = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
+    const { data: bench, error: benchError } = await supabaseServer
+      .from('benchmarks')
+      .select('id')
+      .eq('slug', benchmark_slug)
+      .maybeSingle();
+    if (benchError) throw benchError;
+
     if (bench) {
       benchmarkId = bench.id;
-      const existing = await db.prepare('SELECT id FROM runs WHERE run_label = ? AND benchmark_id = ?').get(run_label, benchmarkId) as any;
+      const { data: existing, error: runError } = await supabaseServer
+        .from('runs')
+        .select('id')
+        .eq('run_label', run_label)
+        .eq('benchmark_id', benchmarkId)
+        .maybeSingle();
+      if (runError) throw runError;
+
       if (existing) {
         return sendError('DUPLICATE_RUN', 'A run with this label and benchmark already exists.', { existing_run_id: existing.id }, 409);
       }

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 interface Params {
@@ -22,42 +22,32 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid experiment_id format', { field: 'experiment_id' }, 400);
     }
 
-    let exp = await db.prepare(`
-      SELECT e.*, b.slug as benchmark_slug, hv.name as base_harness_version_name
-      FROM experiments e
-      JOIN benchmarks b ON e.benchmark_id = b.id
-      JOIN harness_versions hv ON e.base_harness_version_id = hv.id
-      WHERE e.id = ?
-    `).get(idNum) as any;
+    const { data: exp, error: expError } = await supabaseServer
+      .from('experiments')
+      .select(`
+        id,
+        name,
+        target_description,
+        regression_policy,
+        benchmarks ( slug ),
+        harness_versions ( name ),
+        experiment_targets (
+          target_type,
+          target_id,
+          desired_delta
+        )
+      `)
+      .eq('id', idNum)
+      .maybeSingle();
 
-    if (!exp) {
-      try {
-        const { syncExperimentsDevToLocal } = await import('@/lib/ingest-helper');
-        await syncExperimentsDevToLocal();
-        exp = await db.prepare(`
-          SELECT e.*, b.slug as benchmark_slug, hv.name as base_harness_version_name
-          FROM experiments e
-          JOIN benchmarks b ON e.benchmark_id = b.id
-          JOIN harness_versions hv ON e.base_harness_version_id = hv.id
-          WHERE e.id = ?
-        `).get(idNum) as any;
-      } catch (syncErr) {
-        console.error('Failed to lazy sync experiments:', syncErr);
-      }
-    }
+    if (expError) throw expError;
 
     if (!exp) {
       return sendError('NOT_FOUND', `Experiment not found with ID: ${id}`, { experiment_id: id }, 404);
     }
 
-    // Fetch targets
-    const targets = await db.prepare(`
-      SELECT target_type, target_id, desired_delta
-      FROM experiment_targets
-      WHERE experiment_id = ?
-    `).all(idNum) as any[];
-
-    const formattedTargets = targets.map(t => {
+    const targets = exp.experiment_targets || [];
+    const formattedTargets = targets.map((t: any) => {
       const typeLower = (t.target_type || '').toLowerCase();
       const prefix = typeLower === 'failure_mode' ? 'fm' : (typeLower === 'eval_suite' ? 'es' : '');
       return {
@@ -69,14 +59,16 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     let policyObj = {};
     try {
-      policyObj = JSON.parse(exp.regression_policy || '{}');
+      policyObj = typeof exp.regression_policy === 'string' ? JSON.parse(exp.regression_policy || '{}') : (exp.regression_policy || {});
     } catch {}
 
+    const bench = exp.benchmarks as any;
+    const hv = exp.harness_versions as any;
     const formatted = {
       id: `exp${exp.id}`,
       name: exp.name,
-      benchmark_slug: exp.benchmark_slug,
-      base_harness_version_id: `hv-${exp.base_harness_version_name}`,
+      benchmark_slug: bench?.slug,
+      base_harness_version_id: `hv-${hv?.name || 'unknown'}`,
       target_description: exp.target_description,
       targets: formattedTargets,
       regression_policy: policyObj

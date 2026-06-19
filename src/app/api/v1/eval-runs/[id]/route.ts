@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 interface Params {
@@ -22,29 +22,19 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid eval_run_id format', { field: 'eval_run_id' }, 400);
     }
 
-    let er = await db.prepare(`
-      SELECT er.id, er.eval_suite_id, er.harness_version_id, er.status, er.metrics,
-             hv.name as harness_version_name
-      FROM eval_runs er
-      JOIN harness_versions hv ON er.harness_version_id = hv.id
-      WHERE er.id = ?
-    `).get(idNum) as any;
+    const { data: er, error: erError } = await supabaseServer
+      .from('eval_runs')
+      .select(`
+        id,
+        eval_suite_id,
+        status,
+        metrics,
+        harness_versions ( name )
+      `)
+      .eq('id', idNum)
+      .maybeSingle();
 
-    if (!er) {
-      try {
-        const { syncEvalRunsDevToLocal } = await import('@/lib/ingest-helper');
-        await syncEvalRunsDevToLocal();
-        er = await db.prepare(`
-          SELECT er.id, er.eval_suite_id, er.harness_version_id, er.status, er.metrics,
-                 hv.name as harness_version_name
-          FROM eval_runs er
-          JOIN harness_versions hv ON er.harness_version_id = hv.id
-          WHERE er.id = ?
-        `).get(idNum) as any;
-      } catch (syncErr) {
-        console.error('Failed to lazy sync eval runs:', syncErr);
-      }
-    }
+    if (erError) throw erError;
 
     if (!er) {
       return sendError('NOT_FOUND', `Eval run not found with ID: ${id}`, { eval_run_id: id }, 404);
@@ -52,13 +42,14 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     let metricsObj = { pass_rate: 0, avg_score: 0, num_cases: 0 };
     try {
-      metricsObj = JSON.parse(er.metrics || '{}');
+      metricsObj = typeof er.metrics === 'string' ? JSON.parse(er.metrics || '{}') : (er.metrics || {});
     } catch {}
 
+    const hv = er.harness_versions as any;
     const formatted = {
       id: `er${er.id}`,
       eval_suite_id: `es${er.eval_suite_id}`,
-      harness_version_id: `hv-${er.harness_version_name}`,
+      harness_version_id: `hv-${hv?.name || 'unknown'}`,
       status: (er.status || 'unknown').toLowerCase(),
       metrics: metricsObj
     };

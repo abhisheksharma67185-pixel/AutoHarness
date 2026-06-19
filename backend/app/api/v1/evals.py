@@ -1,14 +1,15 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Union
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db
 from app.domain.models import (
     Run, RunTask, FailureLabel, FailureMode, FailureModeMember,
-    EvalSuite, EvalCase, EvalRun, EvalRunResult
+    EvalSuite, EvalCase, EvalRun, EvalRunResult, eval_suite_members
 )
 from app.core.settings import get_settings
 from app.jobs.evals_runner import execute_eval_run
@@ -23,7 +24,7 @@ router_runs = APIRouter(prefix="/eval-runs", tags=["eval-runs"])
 # ------------------------------------------------------------------ #
 
 class CreateSuiteFromFailureModeRequest(BaseModel):
-    failure_mode_id: str
+    failure_mode_id: Union[int, str]
     name: str
     description: str
     max_cases: int = 20
@@ -63,7 +64,10 @@ def create_suite_from_failure_mode(
     db: Session = Depends(get_db)
 ):
     # Fetch failure mode
-    fm = db.query(FailureMode).filter(FailureMode.id == payload.failure_mode_id).first()
+    fm_id = payload.failure_mode_id
+    if isinstance(fm_id, str) and fm_id.isdigit():
+        fm_id = int(fm_id)
+    fm = db.query(FailureMode).filter(FailureMode.id == fm_id).first()
     if not fm:
         raise HTTPException(status_code=404, detail="Failure mode not found")
 
@@ -133,7 +137,7 @@ def create_suite_from_failure_mode(
 
     db.commit()
     db.refresh(suite)
-    return {"data": suite, "error": None}
+    return {"data": serialize_suite(suite), "error": None}
 
 
 @router_suites.post("")
@@ -156,7 +160,36 @@ def create_manual_suite(
     db.add(suite)
     db.commit()
     db.refresh(suite)
-    return {"data": suite, "error": None}
+    return {"data": serialize_suite(suite), "error": None}
+
+
+def serialize_suite(suite: EvalSuite):
+    return {
+        "id": suite.id,
+        "name": suite.name,
+        "benchmark_slug": suite.benchmark_slug,
+        "description": suite.description,
+        "source_type": suite.source_type,
+        "source_metadata": suite.source_metadata,
+        "case_count": suite.case_count,
+        "scoring_strategy": suite.scoring_strategy,
+        "created_at": suite.created_at,
+    }
+
+
+def serialize_case(case: EvalCase):
+    return {
+        "id": case.id,
+        "eval_suite_id": case.eval_suite_id,
+        "benchmark_task_id": case.benchmark_task_id,
+        "failure_label_id": case.failure_label_id,
+        "input_spec": case.input_spec,
+        "expected_spec": case.expected_spec,
+        "scoring_strategy": case.scoring_strategy,
+        "weight": case.weight,
+        "created_by": case.created_by,
+        "created_at": case.created_at,
+    }
 
 
 @router_suites.post("/{id}/cases")
@@ -189,7 +222,7 @@ def create_eval_case(
     suite.case_count += 1
     db.commit()
     db.refresh(case)
-    return {"data": case, "error": None}
+    return {"data": serialize_case(case), "error": None}
 
 
 @router_suites.get("")
@@ -219,17 +252,18 @@ def list_suites(
     res = []
     for name in sorted_names:
         suite_list = grouped[name]
+        suite_list.sort(key=lambda s: s.created_at or datetime.min, reverse=True)
         primary = suite_list[0]
         
         # Calculate combined case count uniquely by benchmark_task_id
         # to avoid duplicating cases across duplicate suites!
         suite_ids = [s.id for s in suite_list]
         unique_case_count = (
-            db.query(EvalCase)
-            .filter(EvalCase.eval_suite_id.in_(suite_ids))
-            .group_by(EvalCase.benchmark_task_id)
-            .count()
-        )
+            db.query(func.count(func.distinct(EvalCase.benchmark_task_id_int)))
+            .join(eval_suite_members, eval_suite_members.c.eval_case_id == EvalCase.id)
+            .filter(eval_suite_members.c.eval_suite_id.in_(suite_ids))
+            .scalar()
+        ) or 0
         
         res.append({
             "id": primary.id,
@@ -257,14 +291,14 @@ def get_suite_details(id: str, db: Session = Depends(get_db)):
     
     # Combined case count
     unique_case_count = (
-        db.query(EvalCase)
-        .filter(EvalCase.eval_suite_id.in_(suite_ids))
-        .group_by(EvalCase.benchmark_task_id)
-        .count()
-    )
+        db.query(func.count(func.distinct(EvalCase.benchmark_task_id_int)))
+        .join(eval_suite_members, eval_suite_members.c.eval_case_id == EvalCase.id)
+        .filter(eval_suite_members.c.eval_suite_id.in_(suite_ids))
+        .scalar()
+    ) or 0
     
     suite.case_count = unique_case_count
-    return {"data": suite, "error": None}
+    return {"data": serialize_suite(suite), "error": None}
 
 
 @router_suites.get("/{id}/cases")
@@ -283,16 +317,25 @@ def get_suite_cases(
 
     offset = (page - 1) * page_size
     
-    # Query cases across any of these suite IDs, distinct by benchmark_task_id!
-    base_query = (
-        db.query(EvalCase)
-        .filter(EvalCase.eval_suite_id.in_(suite_ids))
-        .group_by(EvalCase.benchmark_task_id)
+    # Count distinct benchmark tasks across all suite IDs
+    total = (
+        db.query(func.count(func.distinct(EvalCase.benchmark_task_id_int)))
+        .join(eval_suite_members, eval_suite_members.c.eval_case_id == EvalCase.id)
+        .filter(eval_suite_members.c.eval_suite_id.in_(suite_ids))
+        .scalar()
+    ) or 0
+
+    # Get one representative case per benchmark_task_id_int via min(id) subquery
+    case_ids_subq = (
+        db.query(func.min(EvalCase.id).label('case_id'))
+        .join(eval_suite_members, eval_suite_members.c.eval_case_id == EvalCase.id)
+        .filter(eval_suite_members.c.eval_suite_id.in_(suite_ids))
+        .group_by(EvalCase.benchmark_task_id_int)
+        .subquery()
     )
-    
-    total = base_query.count()
     cases = (
-        base_query
+        db.query(EvalCase)
+        .filter(EvalCase.id.in_(db.query(case_ids_subq.c.case_id)))
         .order_by(EvalCase.created_at.desc())
         .offset(offset)
         .limit(page_size)
@@ -300,7 +343,7 @@ def get_suite_cases(
     )
 
     return {
-        "data": cases,
+        "data": [serialize_case(c) for c in cases],
         "pagination": {
             "page": page,
             "page_size": page_size,
@@ -338,10 +381,17 @@ def create_eval_run(
         raise HTTPException(status_code=404, detail="Eval suite not found")
 
     run_id = str(uuid.uuid4())
+    # Resolve harness version name to integer FK
+    from app.domain.models import _resolve_harness_version_id
+    hv_id = payload.harness_version_id
+    if isinstance(hv_id, str) and not hv_id.isdigit():
+        hv_id = _resolve_harness_version_id(hv_id)
+    else:
+        hv_id = int(hv_id)
     eval_run = EvalRun(
         id=run_id,
         eval_suite_id=payload.eval_suite_id,
-        harness_version_id=payload.harness_version_id,
+        harness_version_id=hv_id,
         run_mode=payload.mode,
         status="pending",
         metrics=None,

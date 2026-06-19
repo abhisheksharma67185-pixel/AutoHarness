@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 export async function POST(req: NextRequest) {
@@ -25,80 +25,116 @@ export async function POST(req: NextRequest) {
     }
 
     // Resolve benchmark
-    const bench = await db.prepare('SELECT id FROM benchmarks WHERE slug = ?').get(benchmark_slug) as any;
+    const { data: bench, error: benchError } = await supabaseServer
+      .from('benchmarks')
+      .select('id')
+      .eq('slug', benchmark_slug)
+      .maybeSingle();
+
+    if (benchError) throw benchError;
     if (!bench) {
       return sendError('NOT_FOUND', `Benchmark not found with slug: ${benchmark_slug}`, { benchmark_slug }, 404);
     }
 
-    const suiteTx = db.transaction(async () => {
-      // 1. Insert suite
-      const suiteResult = await db.prepare(`
-        INSERT INTO eval_suites (name, benchmark_id, description)
-        VALUES (?, ?, ?)
-        RETURNING id
-      `).run(name, bench.id, description);
-      const evalSuiteId = suiteResult.lastInsertRowid;
+    // 1. Insert suite
+    const { data: suite, error: suiteInsertError } = await supabaseServer
+      .from('eval_suites')
+      .insert({
+        name,
+        benchmark_id: bench.id,
+        description
+      })
+      .select('id')
+      .single();
 
-      // 2. Promote failure labels to eval cases
-      let caseCount = 0;
-      for (const idStr of failure_label_ids) {
-        const cleanId = idStr.startsWith('fl') ? idStr.slice(2) : idStr;
-        const labelId = parseInt(cleanId, 10);
+    if (suiteInsertError) throw suiteInsertError;
+    const evalSuiteId = suite.id;
 
-        if (isNaN(labelId)) continue;
+    // 2. Promote failure labels to eval cases
+    let caseCount = 0;
+    for (const idStr of failure_label_ids) {
+      const cleanId = idStr.startsWith('fl') ? idStr.slice(2) : idStr;
+      const labelId = parseInt(cleanId, 10);
 
-        // Fetch failure label and task details
-        const details = await db.prepare(`
-          SELECT fl.id as failure_label_id, rt.benchmark_task_id, bt.task_id, bt.title as slug,
-                 bt.metadata as bt_metadata
-          FROM failure_labels fl
-          JOIN run_tasks rt ON fl.run_task_id = rt.id
-          JOIN benchmark_tasks bt ON rt.benchmark_task_id = bt.id
-          WHERE fl.id = ?
-        `).get(labelId) as any;
+      if (isNaN(labelId)) continue;
 
-        if (!details) continue;
+      // Fetch failure label and task details
+      const { data: details, error: detailsError } = await supabaseServer
+        .from('failure_labels')
+        .select(`
+          id,
+          run_tasks!inner (
+            benchmark_task_id,
+            benchmark_tasks!inner (
+              task_id,
+              title,
+              metadata
+            )
+          )
+        `)
+        .eq('id', labelId)
+        .maybeSingle();
 
-        let btMetaObj: any = {};
-        try { btMetaObj = JSON.parse(details.bt_metadata || '{}'); } catch {}
+      if (detailsError || !details) continue;
 
-        const inputSpec = JSON.stringify({
-          task_id: details.task_id,
-          slug: details.slug,
-          original_instructions: btMetaObj.description || ''
+      const rt = Array.isArray(details.run_tasks) ? details.run_tasks[0] : details.run_tasks;
+      const bt = rt?.benchmark_tasks as any;
+      const benchmark_task_id = rt?.benchmark_task_id;
+      const task_id = bt?.task_id;
+      const slug = bt?.title;
+      const bt_metadata = bt?.metadata;
+
+      if (!benchmark_task_id) continue;
+
+      let btMetaObj: any = {};
+      try {
+        btMetaObj = typeof bt_metadata === 'string' ? JSON.parse(bt_metadata) : (bt_metadata || {});
+      } catch {}
+
+      const inputSpec = JSON.stringify({
+        task_id: task_id,
+        slug: slug,
+        original_instructions: btMetaObj.description || ''
+      });
+
+      const expectedSpec = JSON.stringify({
+        assertions: [{ type: 'exit_code', expected: 0 }],
+        strategy: scoring_strategy || 'benchmark_or_llm_judge'
+      });
+
+      // Insert eval case
+      const { data: newCase, error: caseError } = await supabaseServer
+        .from('eval_cases')
+        .insert({
+          benchmark_task_id,
+          failure_label_id: labelId,
+          input_spec: inputSpec,
+          expected_spec: expectedSpec,
+          scoring_config: '{}',
+          created_by: 'MANUAL'
+        })
+        .select('id')
+        .single();
+
+      if (caseError || !newCase) continue;
+      const evalCaseId = newCase.id;
+
+      // Insert eval suite member
+      const { error: memberError } = await supabaseServer
+        .from('eval_suite_members')
+        .insert({
+          eval_suite_id: evalSuiteId,
+          eval_case_id: evalCaseId
         });
 
-        const expectedSpec = JSON.stringify({
-          assertions: [{ type: 'exit_code', expected: 0 }],
-          strategy: scoring_strategy || 'benchmark_or_llm_judge'
-        });
-
-        // Insert eval case
-        const caseResult = await db.prepare(`
-          INSERT INTO eval_cases (benchmark_task_id, failure_label_id, input_spec, expected_spec, scoring_config, created_by)
-          VALUES (?, ?, ?, ?, ?, 'MANUAL')
-          RETURNING id
-        `).run(details.benchmark_task_id, details.failure_label_id, inputSpec, expectedSpec, '{}');
-        const evalCaseId = caseResult.lastInsertRowid;
-
-        // Insert eval suite member
-        await db.prepare(`
-          INSERT INTO eval_suite_members (eval_suite_id, eval_case_id)
-          VALUES (?, ?)
-          ON CONFLICT DO NOTHING
-        `).run(evalSuiteId, evalCaseId);
-
+      if (!memberError) {
         caseCount++;
       }
-
-      return { evalSuiteId, caseCount };
-    });
-
-    const result = await suiteTx();
+    }
 
     return sendSuccess({
-      eval_suite_id: `es${result.evalSuiteId}`,
-      case_count: result.caseCount
+      eval_suite_id: `es${evalSuiteId}`,
+      case_count: caseCount
     }, 201);
 
   } catch (err: any) {
@@ -113,41 +149,33 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    try {
-      const { syncEvalSuitesDevToLocal } = await import('@/lib/ingest-helper');
-      await syncEvalSuitesDevToLocal();
-    } catch (syncErr) {
-      console.error('Failed to lazy sync eval suites:', syncErr);
-    }
-
     const { searchParams } = new URL(req.url);
     const benchmarkSlug = searchParams.get('benchmark_slug');
 
-    let query = `
-      SELECT es.id, es.name, es.description, es.created_at, b.slug as benchmark_slug,
-             COUNT(esm.eval_case_id) as case_count
-      FROM eval_suites es
-      JOIN benchmarks b ON es.benchmark_id = b.id
-      LEFT JOIN eval_suite_members esm ON es.id = esm.eval_suite_id
-      WHERE 1=1
-    `;
-    const sqlParams: any[] = [];
+    let query = supabaseServer
+      .from('eval_suites')
+      .select(`
+        id,
+        name,
+        description,
+        created_at,
+        benchmarks!inner ( slug ),
+        eval_suite_members ( eval_case_id )
+      `);
 
     if (benchmarkSlug) {
-      query += ' AND b.slug = ?';
-      sqlParams.push(benchmarkSlug);
+      query = query.eq('benchmarks.slug', benchmarkSlug);
     }
 
-    query += ' GROUP BY es.id, b.slug ORDER BY es.id ASC';
+    const { data: suites, error: suitesError } = await query;
+    if (suitesError) throw suitesError;
 
-    const suites = await db.prepare(query).all(...sqlParams) as any[];
-
-    const formatted = suites.map(s => ({
+    const formatted = (suites || []).map((s: any) => ({
       id: `es${s.id}`,
       name: s.name,
-      benchmark_slug: s.benchmark_slug,
+      benchmark_slug: s.benchmarks?.slug,
       description: s.description,
-      case_count: s.case_count || 0,
+      case_count: Array.isArray(s.eval_suite_members) ? s.eval_suite_members.length : (s.eval_suite_members ? 1 : 0),
       created_at: new Date(s.created_at || Date.now()).toISOString()
     }));
 

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 interface Params {
@@ -22,16 +22,18 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendError('VALIDATION_ERROR', 'Invalid run_task_id format', { field: 'run_task_id' }, 400);
     }
 
-    const steps = await db.prepare(`
-      SELECT * FROM trace_steps
-      WHERE run_task_id = ?
-      ORDER BY step_index ASC
-    `).all(idNum) as any[];
+    const { data: steps, error } = await supabaseServer
+      .from('trace_steps')
+      .select('*')
+      .eq('run_task_id', idNum)
+      .order('step_index', { ascending: true });
 
-    const formattedSteps = steps.map(s => {
+    if (error) throw error;
+
+    const formattedSteps = (steps || []).map(s => {
       let metaObj = {};
       try {
-        metaObj = JSON.parse(s.metadata || '{}');
+        metaObj = typeof s.metadata === 'string' ? JSON.parse(s.metadata || '{}') : (s.metadata || {});
       } catch {}
 
       return {

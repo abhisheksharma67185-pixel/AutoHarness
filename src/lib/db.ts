@@ -1,6 +1,11 @@
 import { Pool } from 'pg';
 
+/**
+ * @deprecated Legacy direct database access layer.
+ * All new code should use supabaseServer or supabaseBrowser from `@/lib/supabase-server` / `@/lib/supabase-browser` instead.
+ */
 if (!process.env.DATABASE_URL) {
+
   console.error('DATABASE_URL is not set — database queries will fail.');
 }
 

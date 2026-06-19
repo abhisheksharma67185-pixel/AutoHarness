@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 import { runOnlineEvaluation } from '@/lib/online-runner';
 
@@ -22,8 +22,14 @@ export async function POST(req: NextRequest) {
     // Clean suite ID
     const cleanSuiteId = eval_suite_id.startsWith('es') ? eval_suite_id.slice(2) : eval_suite_id;
     const suiteIdNum = parseInt(cleanSuiteId, 10);
-    const suite = await db.prepare('SELECT * FROM eval_suites WHERE id = ?').get(suiteIdNum) as any;
+    
+    const { data: suite, error: suiteError } = await supabaseServer
+      .from('eval_suites')
+      .select('id, name')
+      .eq('id', suiteIdNum)
+      .maybeSingle();
 
+    if (suiteError) throw suiteError;
     if (!suite) {
       return sendError('NOT_FOUND', `Eval suite not found with ID: ${eval_suite_id}`, { eval_suite_id }, 404);
     }
@@ -33,11 +39,28 @@ export async function POST(req: NextRequest) {
     if (harnessName.startsWith('hv-')) {
       harnessName = harnessName.slice(3);
     }
-    let hv = await db.prepare('SELECT id, name FROM harness_versions WHERE name = ?').get(harnessName) as any;
-    if (!hv) {
+
+    let hv: any = null;
+    const { data: hvByName, error: hvNameError } = await supabaseServer
+      .from('harness_versions')
+      .select('id, name')
+      .eq('name', harnessName)
+      .maybeSingle();
+
+    if (hvNameError) throw hvNameError;
+
+    if (hvByName) {
+      hv = hvByName;
+    } else {
       const hvIdNum = parseInt(harnessName, 10);
       if (!isNaN(hvIdNum)) {
-        hv = await db.prepare('SELECT id, name FROM harness_versions WHERE id = ?').get(hvIdNum) as any;
+        const { data: hvById, error: hvIdError } = await supabaseServer
+          .from('harness_versions')
+          .select('id, name')
+          .eq('id', hvIdNum)
+          .maybeSingle();
+        if (hvIdError) throw hvIdError;
+        if (hvById) hv = hvById;
       }
     }
 
@@ -46,12 +69,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Insert pending eval_runs record
-    const erResult = await db.prepare(`
-      INSERT INTO eval_runs (eval_suite_id, harness_version_id, status, metrics)
-      VALUES (?, ?, 'PENDING', '{}')
-      RETURNING id
-    `).run(suite.id, hv.id);
-    const evalRunId = erResult.lastInsertRowid;
+    const { data: erRow, error: erInsertError } = await supabaseServer
+      .from('eval_runs')
+      .insert({
+        eval_suite_id: suite.id,
+        harness_version_id: hv.id,
+        status: 'PENDING',
+        metrics: '{}'
+      })
+      .select('id')
+      .single();
+
+    if (erInsertError || !erRow) throw erInsertError || new Error('Failed to create eval_run');
+    const evalRunId = erRow.id;
 
     if (mode === 'online_rerun') {
       // Execute the online sandbox evaluation loop in the background
@@ -64,12 +94,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Get cases in suite
-    const cases = await db.prepare(`
-      SELECT ec.*
-      FROM eval_cases ec
-      JOIN eval_suite_members esm ON ec.id = esm.eval_case_id
-      WHERE esm.eval_suite_id = ?
-    `).all(suite.id) as any[];
+    const { data: members, error: membersError } = await supabaseServer
+      .from('eval_suite_members')
+      .select(`
+        eval_cases (
+          id,
+          benchmark_task_id
+        )
+      `)
+      .eq('eval_suite_id', suite.id);
+
+    if (membersError) throw membersError;
+
+    const cases = (members || []).map((m: any) => m.eval_cases).filter(Boolean) as any[];
 
     // Synchronously execute offline replay to update results
     let passedCount = 0;
@@ -77,14 +114,26 @@ export async function POST(req: NextRequest) {
 
     for (const c of cases) {
       // Find run task that matches harness version and case's benchmark task
-      const runTask = await db.prepare(`
-        SELECT rt.status, rt.score
-        FROM run_tasks rt
-        JOIN runs r ON rt.run_id = r.id
-        WHERE r.harness_version_id = ? AND rt.benchmark_task_id = ?
-        ORDER BY r.created_at DESC
-        LIMIT 1
-      `).get(hv.id, c.benchmark_task_id) as any;
+      const { data: runTasks, error: rtError } = await supabaseServer
+        .from('run_tasks')
+        .select(`
+          status,
+          score,
+          runs!inner (
+            harness_version_id,
+            created_at
+          )
+        `)
+        .eq('benchmark_task_id', c.benchmark_task_id)
+        .eq('runs.harness_version_id', hv.id);
+
+      const sortedRt = (runTasks || []).sort((a: any, b: any) => {
+        const timeA = new Date(a.runs?.created_at || 0).getTime();
+        const timeB = new Date(b.runs?.created_at || 0).getTime();
+        return timeB - timeA;
+      });
+
+      const runTask = sortedRt[0];
 
       const caseStatus = runTask ? runTask.status : 'FAIL';
       const caseScore = runTask ? runTask.score : 0.0;
@@ -92,10 +141,17 @@ export async function POST(req: NextRequest) {
       if (caseStatus === 'PASS') passedCount++;
       scoreSum += caseScore;
 
-      await db.prepare(`
-        INSERT INTO eval_results (eval_run_id, eval_case_id, status, score, raw_output, judge_metadata)
-        VALUES (?, ?, ?, ?, '{}', '{}')
-      `).run(evalRunId, c.id, caseStatus, caseScore);
+      const { error: resultInsertError } = await supabaseServer
+        .from('eval_results')
+        .insert({
+          eval_run_id: evalRunId,
+          eval_case_id: c.id,
+          status: caseStatus,
+          score: caseScore,
+          raw_output: '{}',
+          judge_metadata: '{}'
+        });
+      if (resultInsertError) throw resultInsertError;
     }
 
     const totalCases = cases.length;
@@ -108,11 +164,15 @@ export async function POST(req: NextRequest) {
       num_cases: totalCases
     };
 
-    await db.prepare(`
-      UPDATE eval_runs
-      SET status = 'COMPLETED', metrics = ?, finished_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(JSON.stringify(metricsObj), evalRunId);
+    const { error: updateEvalRunError } = await supabaseServer
+      .from('eval_runs')
+      .update({
+        status: 'COMPLETED',
+        metrics: JSON.stringify(metricsObj),
+        finished_at: new Date().toISOString()
+      })
+      .eq('id', evalRunId);
+    if (updateEvalRunError) throw updateEvalRunError;
 
     return sendSuccess({
       eval_run_id: `er${evalRunId}`,

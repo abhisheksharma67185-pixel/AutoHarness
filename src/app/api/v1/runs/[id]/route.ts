@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabaseServer } from '@/lib/supabase-server';
 import { checkAuth, sendSuccess, sendError } from '@/lib/api-helper';
 
 interface Params {
@@ -15,33 +15,24 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   try {
     const { id } = await params;
-    let run = await db.prepare(`
-      SELECT r.id, r.run_label, r.global_score, r.metrics, r.created_at, r.raw_artifact_uri,
-             b.slug as benchmark_slug,
-             r.agent_name as agent_name,
-             hv.name as harness_version
-      FROM runs r
-      JOIN benchmarks b ON r.benchmark_id = b.id
-      LEFT JOIN harness_versions hv ON r.harness_version_id = hv.id
-      WHERE r.id = ?
-    `).get(id) as any;
+    
+    const { data: run, error: runError } = await supabaseServer
+      .from('runs')
+      .select(`
+        id,
+        run_label,
+        global_score,
+        metrics,
+        created_at,
+        raw_artifact_uri,
+        agent_name,
+        benchmarks!inner ( slug ),
+        harness_versions ( name )
+      `)
+      .eq('id', id)
+      .maybeSingle();
 
-    if (!run) {
-      const { syncRunDevToLocal } = await import('@/lib/ingest-helper');
-      const synced = await syncRunDevToLocal(id);
-      if (synced) {
-        run = await db.prepare(`
-          SELECT r.id, r.run_label, r.global_score, r.metrics, r.created_at, r.raw_artifact_uri,
-                 b.slug as benchmark_slug,
-                 r.agent_name as agent_name,
-                 hv.name as harness_version
-          FROM runs r
-          JOIN benchmarks b ON r.benchmark_id = b.id
-          LEFT JOIN harness_versions hv ON r.harness_version_id = hv.id
-          WHERE r.id = ?
-        `).get(id) as any;
-      }
-    }
+    if (runError) throw runError;
 
     if (!run) {
       return sendError('NOT_FOUND', `Run not found with ID: ${id}`, { run_id: id }, 404);
@@ -49,21 +40,23 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     let metricsObj = { success_rate: 0, avg_score: 0, num_tasks: 0, num_failures: 0 };
     try {
-      const parsed = JSON.parse(run.metrics);
+      const parsed = typeof run.metrics === 'string' ? JSON.parse(run.metrics) : (run.metrics || {});
       metricsObj = {
-        success_rate: parsed.pass_rate || 0,
-        avg_score: parsed.avg_score || 0,
-        num_tasks: parsed.total_tasks || 0,
-        num_failures: parsed.failed_tasks || 0
+        success_rate: parsed.pass_rate ?? 0,
+        avg_score: parsed.avg_score ?? 0,
+        num_tasks: parsed.total_tasks ?? 0,
+        num_failures: parsed.failed_tasks ?? 0
       };
     } catch {}
 
+    const bench = run.benchmarks as any;
+    const hv = run.harness_versions as any;
     const formatted = {
       id: run.id,
-      benchmark_slug: run.benchmark_slug,
+      benchmark_slug: bench?.slug,
       run_label: run.run_label,
       agent_name: run.agent_name,
-      harness_version: run.harness_version || 'unknown',
+      harness_version: hv?.name || 'unknown',
       metrics: metricsObj,
       created_at: new Date(run.created_at || Date.now()).toISOString(),
       raw_artifact_uri: run.raw_artifact_uri
