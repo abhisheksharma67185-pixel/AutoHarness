@@ -394,7 +394,7 @@ def create_eval_run(
         harness_version_id=hv_id,
         run_mode=payload.mode,
         status="pending",
-        metrics=None,
+        metrics={},
         created_at=datetime.utcnow()
     )
     db.add(eval_run)
