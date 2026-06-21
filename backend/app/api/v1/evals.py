@@ -45,10 +45,10 @@ class CreateManualSuiteRequest(BaseModel):
 
 class CreateEvalCaseRequest(BaseModel):
     eval_suite_id: str
-    failure_label_id: Optional[str] = None
-    run_task_id: Optional[str] = None
-    run_id: Optional[str] = None
-    benchmark_task_id: str
+    failure_label_id: Optional[Union[int, str]] = None
+    run_task_id: Optional[Union[int, str]] = None
+    run_id: Optional[Union[int, str]] = None
+    benchmark_task_id: Union[int, str]
     input_spec: dict
     expected_spec: Optional[dict] = None
     scoring_strategy: str = "benchmark_native"

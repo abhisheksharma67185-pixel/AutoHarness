@@ -236,11 +236,11 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          eval_suite_id,
-          failure_label_id: runTask.failure_label?.id || null,
-          run_task_id: run_task_id,
-          run_id: runTask.run_id,
-          benchmark_task_id: runTask.benchmark_task_id,
+          eval_suite_id: String(eval_suite_id),
+          failure_label_id: runTask.failure_label_id ? String(runTask.failure_label_id) : null,
+          run_task_id: String(run_task_id),
+          run_id: runTask.run_id ? String(runTask.run_id) : null,
+          benchmark_task_id: String(runTask.benchmark_task_id),
           input_spec: inputSpec,
           expected_spec: { diagnosis: runTask.diagnosis_text || 'Unknown failure' },
           scoring_strategy: 'benchmark_native',
@@ -250,7 +250,10 @@ export async function POST(req: NextRequest) {
 
       const data = await res.json();
       if (!res.ok) {
-        return NextResponse.json({ error: data.detail || 'Failed to promote failure' }, { status: res.status });
+        const errorMsg = Array.isArray(data.detail)
+          ? data.detail.map((e: any) => e.msg || JSON.stringify(e)).join('; ')
+          : (typeof data.detail === 'string' ? data.detail : 'Failed to promote failure');
+        return NextResponse.json({ error: errorMsg }, { status: res.status });
       }
 
       return NextResponse.json({

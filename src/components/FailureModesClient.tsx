@@ -166,9 +166,9 @@ export default function FailureModesClient({
                 onChange={(e) => setActiveRunId(e.target.value)}
                 className="bg-black/40 border border-white/10 rounded-md py-1 px-3 pr-8 text-xs font-semibold text-white focus:outline-none focus:border-purple-500 appearance-none cursor-pointer"
               >
-                {runs.map(r => (
+                {[...runs].sort((a, b) => (a.global_score ?? 1) - (b.global_score ?? 1)).map(r => (
                   <option key={r.run_id} value={r.run_id}>
-                    {r.run_id} ({r.benchmark})
+                    {r.run_id} — {((r.global_score ?? 0) * 100).toFixed(0)}% pass ({r.benchmark})
                   </option>
                 ))}
               </select>
@@ -196,8 +196,15 @@ export default function FailureModesClient({
 
           <div className="flex-1 overflow-y-auto divide-y divide-white/[0.02]">
             {failureModes.length === 0 ? (
-              <div className="text-center py-12 text-gray-500 text-xs">
-                No failure clusters identified for this run.
+              <div className="text-center py-12 px-4 space-y-2">
+                <div className="text-emerald-500 mx-auto w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center mb-3">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+                <p className="text-xs font-semibold text-gray-300">No failures for this run</p>
+                <p className="text-[10px] text-gray-500 leading-relaxed">
+                  This run passed all tasks — no failure clusters were identified.<br/>
+                  Switch to a baseline run in the dropdown above to inspect failure patterns.
+                </p>
               </div>
             ) : (
               failureModes.map((fm) => {

@@ -68,13 +68,25 @@ export default function TaskExplorerClient({
   const [updatingTaxonomy, setUpdatingTaxonomy] = useState(false);
   const [promotingSuiteId, setPromotingSuiteId] = useState<string>('');
   const [promotionMessage, setPromotionMessage] = useState('');
+  const [labelDropdownOpen, setLabelDropdownOpen] = useState(false);
+  const labelDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close label dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (labelDropdownRef.current && !labelDropdownRef.current.contains(e.target as Node)) {
+        setLabelDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Job actions: Diagnose & Cluster
   const [diagnoseStatus, setDiagnoseStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [clusterStatus, setClusterStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [jobMessage, setJobMessage] = useState('');
-  const [isDiagnoseHover, setDiagnoseHover] = useState(false);
-  const [isClusterHover, setClusterHover] = useState(false);
+
 
   // Fetch tasks when run changes
   useEffect(() => {
@@ -323,21 +335,14 @@ export default function TaskExplorerClient({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
-          {jobMessage && (
-            <span className={`text-[10px] font-semibold px-2 py-1 rounded ${
-              diagnoseStatus === 'error' || clusterStatus === 'error'
-                ? 'text-rose-400 bg-rose-950/20'
-                : 'text-emerald-400 bg-emerald-950/20'
-            }`}>{jobMessage}</span>
-          )}
           <button
             onClick={handleDiagnose}
             disabled={diagnoseStatus === 'running' || !activeRunId}
             title="Run LLM failure diagnosis on this run"
-            onMouseEnter={() => setDiagnoseHover(true)}
-            onMouseLeave={() => setDiagnoseHover(false)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-white border border-amber-500/20 rounded text-xs font-semibold transition-colors disabled:opacity-40"
-            style={{ backgroundColor: isDiagnoseHover ? 'rgba(245, 158, 11, 0.7)' : '#f59e0b' }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-white rounded text-xs font-semibold transition-all disabled:opacity-40 active:scale-[0.97] select-none"
+            style={{ backgroundColor: '#f59e0b' }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.75)')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#f59e0b')}
           >
             {diagnoseStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
             Diagnose Failures
@@ -346,10 +351,10 @@ export default function TaskExplorerClient({
             onClick={handleCluster}
             disabled={clusterStatus === 'running' || !activeRunId}
             title="Cluster failure labels into failure modes"
-            onMouseEnter={() => setClusterHover(true)}
-            onMouseLeave={() => setClusterHover(false)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-white border border-purple-500/20 rounded text-xs font-semibold transition-colors disabled:opacity-40"
-            style={{ backgroundColor: isClusterHover ? 'rgba(79, 141, 252, 0.7)' : '#4f8dfc' }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-white rounded text-xs font-semibold transition-all disabled:opacity-40 active:scale-[0.97] select-none"
+            style={{ backgroundColor: '#4f8dfc' }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(79,141,252,0.75)')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#4f8dfc')}
           >
             {clusterStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <GitBranch size={12} />}
             Cluster Modes
@@ -539,26 +544,62 @@ export default function TaskExplorerClient({
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-4 pt-3 border-t border-red-900/10">
-                      {/* Override taxonomy */}
+                    <div className="flex flex-nowrap items-center gap-4 pt-3 border-t border-red-900/10">
+                      {/* Override taxonomy — custom dropdown */}
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-500 font-bold uppercase">Override Label:</span>
-                        <div className="relative inline-block">
-                          <select
+                        <div className="relative" ref={labelDropdownRef}>
+                          <button
+                            type="button"
                             disabled={updatingTaxonomy}
-                            value={activeTask.taxonomy_label || ''}
-                            onChange={(e) => handleTaxonomyOverride(e.target.value)}
-                            className="bg-black/60 border border-white/10 text-gray-300 text-[10px] rounded px-2 py-1 pr-6 focus:outline-none cursor-pointer focus:border-purple-500 appearance-none"
+                            onMouseDown={() => setLabelDropdownOpen(o => !o)}
+                            className="flex items-center gap-2 bg-purple-900/30 border border-purple-800/30 text-purple-300 text-[10px] font-semibold rounded px-2.5 py-1.5 focus:outline-none cursor-pointer hover:bg-purple-900/40 transition-colors min-w-[130px] justify-between select-none disabled:opacity-50"
                           >
-                            <option value="">Select Category</option>
-                            <option value="GAP">GAP</option>
-                            <option value="AMBIGUITY">AMBIGUITY</option>
-                            <option value="TOOL_MISUSE">TOOL_MISUSE</option>
-                            <option value="CODE_BUG">CODE_BUG</option>
-                            <option value="UPSTREAM">UPSTREAM</option>
-                            <option value="SAFETY_VIOLATION">SAFETY_VIOLATION</option>
-                          </select>
-                          <ChevronDown size={10} className="absolute right-2 top-2 text-gray-400 pointer-events-none" />
+                            <span>{activeTask.taxonomy_label || 'Select Category'}</span>
+                            {updatingTaxonomy
+                              ? <Loader2 size={10} className="animate-spin shrink-0" />
+                              : <ChevronDown size={10} className={`transition-transform shrink-0 ${labelDropdownOpen ? 'rotate-180' : ''}`} />
+                            }
+                          </button>
+                          {labelDropdownOpen && (
+                            <div
+                              className="absolute top-full left-0 mt-1 z-[100] rounded-xl overflow-hidden py-1.5 min-w-[180px]"
+                              style={{ background: '#3c3c3e', boxShadow: '0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2)' }}
+                              onMouseDown={e => e.stopPropagation()}
+                            >
+                              {[
+                                { value: '', label: '— Clear Label —', muted: true },
+                                { value: 'GAP', label: 'GAP', muted: false },
+                                { value: 'AMBIGUITY', label: 'AMBIGUITY', muted: false },
+                                { value: 'TOOL_MISUSE', label: 'TOOL_MISUSE', muted: false },
+                                { value: 'CODE_BUG', label: 'CODE_BUG', muted: false },
+                                { value: 'UPSTREAM', label: 'UPSTREAM', muted: false },
+                                { value: 'SAFETY_VIOLATION', label: 'SAFETY_VIOLATION', muted: false },
+                              ].map(opt => {
+                                const isActive = (activeTask.taxonomy_label || '') === opt.value && opt.value !== '';
+                                return (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onMouseDown={() => {
+                                      setLabelDropdownOpen(false);
+                                      handleTaxonomyOverride(opt.value);
+                                    }}
+                                    className="w-full text-left px-4 py-1.5 text-[11px] font-medium transition-colors flex items-center justify-between gap-2"
+                                    style={{
+                                      color: isActive ? '#fff' : opt.muted ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.85)',
+                                      background: isActive ? '#0a84ff' : 'transparent',
+                                    }}
+                                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                                  >
+                                    {opt.label}
+                                    {isActive && <Check size={11} className="shrink-0" style={{ color: '#fff' }} />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -572,7 +613,7 @@ export default function TaskExplorerClient({
                               setPromotingSuiteId(e.target.value);
                               if (e.target.value) handlePromoteToSuite(e.target.value);
                             }}
-                            className="bg-purple-900/30 border border-purple-800/30 text-purple-300 text-[10px] font-semibold rounded px-2.5 py-1.5 pr-8 focus:outline-none cursor-pointer hover:bg-purple-900/40 appearance-none"
+                            className="bg-purple-900/30 border border-purple-800/30 text-purple-300 text-[10px] font-semibold rounded px-2.5 py-1.5 pr-8 focus:outline-none cursor-pointer hover:bg-purple-900/40 appearance-none max-w-[200px] truncate"
                           >
                             <option value="">Select Suite</option>
                             {suites.map(s => (
@@ -581,14 +622,21 @@ export default function TaskExplorerClient({
                           </select>
                           <GraduationCap size={10} className="absolute right-2.5 top-2.5 text-purple-300 pointer-events-none" />
                         </div>
-                        {promotionMessage && (
-                          <span className="text-[10px] font-semibold text-emerald-400 flex items-center gap-0.5">
-                            {promotionMessage.includes('successfully') ? <Check size={12} /> : null}
-                            {promotionMessage}
-                          </span>
-                        )}
+
                       </div>
                     </div>
+                    {promotionMessage && (
+                      <div className="pt-1.5">
+                        <span className={`text-[10px] font-semibold flex items-center gap-1 ${
+                          promotionMessage.startsWith('Failed') || promotionMessage.startsWith('Error')
+                            ? 'text-rose-400'
+                            : 'text-emerald-400'
+                        }`}>
+                          {promotionMessage.includes('successfully') ? <Check size={12} /> : null}
+                          {promotionMessage}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -662,6 +710,30 @@ export default function TaskExplorerClient({
 
       </div>
 
+      {jobMessage && (
+        <div 
+          className="fixed bottom-6 right-6 z-[9999] flex items-center gap-2 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md transition-all duration-300 animate-in slide-in-from-bottom-5"
+          style={{
+            backgroundColor: diagnoseStatus === 'error' || clusterStatus === 'error'
+              ? 'rgba(254, 226, 226, 0.95)'
+              : 'rgba(209, 250, 229, 0.95)',
+            borderColor: diagnoseStatus === 'error' || clusterStatus === 'error'
+              ? 'rgba(239, 68, 68, 0.2)'
+              : 'rgba(16, 185, 129, 0.2)',
+            color: diagnoseStatus === 'error' || clusterStatus === 'error'
+              ? '#dc2626'
+              : '#059669',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)'
+          }}
+        >
+          {diagnoseStatus === 'error' || clusterStatus === 'error' ? (
+            <AlertCircle size={15} className="shrink-0" />
+          ) : (
+            <Check size={15} className="shrink-0" />
+          )}
+          <span className="text-xs font-semibold">{jobMessage}</span>
+        </div>
+      )}
     </div>
   );
 }

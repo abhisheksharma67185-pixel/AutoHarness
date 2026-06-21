@@ -387,10 +387,13 @@ export function usePipelineExecution() {
       const result = await runNodes(nodes, edges, sortedNodes, 0, {}, executionLogs, stepCount);
       if (result.paused) {
         // approval_requested already fired inside runNodes
-      } else if (result.success) {
-        posthog.capture('workflow_run_completed', runProps);
       } else {
-        posthog.capture('workflow_run_failed', runProps);
+        setIsExecuting(false);
+        if (result.success) {
+          posthog.capture('workflow_run_completed', runProps);
+        } else {
+          posthog.capture('workflow_run_failed', runProps);
+        }
       }
       return result;
     } catch (err: unknown) {

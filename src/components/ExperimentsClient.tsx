@@ -530,14 +530,16 @@ export default function ExperimentsClient({
                     <div className="glass-panel p-6 space-y-4">
                       <h3 className="text-sm font-bold text-white">Regression Gate Verification</h3>
                       
-                      {activeVariant.run_id ? (
+                      {(activeVariant.run_id || activeVariant.gates_passed !== null && activeVariant.gates_passed !== undefined) ? (
                         <div className="space-y-4">
+                          {activeVariant.run_id && (
                           <div className="flex items-center justify-between pb-3 border-b border-white/[0.04]">
                             <span className="text-xs text-gray-400">Linked Run ID:</span>
                             <span className="font-mono text-xs text-white bg-white/5 border border-white/10 px-2 py-0.5 rounded">
                               {activeVariant.run_id}
                             </span>
                           </div>
+                          )}
 
                           <div className="flex items-center justify-between pb-3 border-b border-white/[0.04]">
                             <span className="text-xs text-gray-400">Promotion Status:</span>

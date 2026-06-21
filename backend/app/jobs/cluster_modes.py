@@ -262,18 +262,27 @@ def run_cluster_job(job_id: str, payload: Dict[str, Any]) -> None:
             db.commit()
 
         benchmark_slug = payload.get("benchmark_slug")
+        run_ids = payload.get("run_ids")
+        single_run_id = payload.get("run_id")
+
+        if not run_ids and single_run_id:
+            run_ids = [single_run_id]
+
         if not benchmark_slug:
             # Fallback: identify from target run_ids
-            run_ids = payload.get("run_ids") or []
+            target_id = None
             if run_ids:
-                first_run = db.query(Run).filter(Run.id == run_ids[0]).first()
+                target_id = run_ids[0]
+            elif single_run_id:
+                target_id = single_run_id
+
+            if target_id:
+                first_run = db.query(Run).filter(Run.id == target_id).first()
                 if first_run:
                     benchmark_slug = first_run.benchmark_slug
         
         if not benchmark_slug:
             raise ValueError("benchmark_slug not provided and could not be inferred.")
-
-        run_ids = payload.get("run_ids")
         embedding_model = payload.get("embedding_model")
         min_cluster_size = payload.get("min_cluster_size", 3)
 

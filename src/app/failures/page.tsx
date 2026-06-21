@@ -33,7 +33,10 @@ function FailureModesLoader() {
         if (urlRunId) {
           setActiveRunId(urlRunId);
         } else if (fetchedRuns.length > 0) {
-          setActiveRunId(fetchedRuns[0].run_id);
+          // Default to the run with the most failures (lowest global score)
+          // so the Failure Modes view is populated by default
+          const sorted = [...fetchedRuns].sort((a, b) => (a.global_score ?? 1) - (b.global_score ?? 1));
+          setActiveRunId(sorted[0].run_id);
         }
       } catch (err) {
         console.error('Failed to fetch runs:', err);

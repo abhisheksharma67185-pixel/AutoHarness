@@ -176,19 +176,22 @@ def diagnose_run(db: Session, run_id: str, prompt_version: str = "diag_v1", mode
         # Clear existing failure label for the task to avoid unique constraint violations
         db.query(FailureLabel).filter(FailureLabel.run_task_id == t.id).delete()
 
+        # Map incoming tag
+        mapped_taxonomy = "OTHER"
+        clean_taxonomy = (validated.taxonomy_primary or "").upper()
+        valid_taxonomies = {'GAP', 'AMBIGUITY', 'TOOL_MISUSE', 'CODE_BUG', 'UPSTREAM', 'SAFETY', 'OTHER'}
+        if clean_taxonomy in valid_taxonomies:
+            mapped_taxonomy = clean_taxonomy
+        elif clean_taxonomy == 'SAFETY_VIOLATION':
+            mapped_taxonomy = 'SAFETY'
+
         fl = FailureLabel(
-            id=str(uuid.uuid4()),
-            run_id=run_id,
             run_task_id=t.id,
             diagnosis_text=validated.diagnosis_text,
-            taxonomy_primary=validated.taxonomy_primary,
-            severity=validated.severity,
-            confidence=validated.confidence,
-            prompt_version=prompt_version,
-            model_version=model_version or llm_client.model,
-            llm_latency_ms=int(latency_ms),
-            raw_response=parsed,
+            taxonomy_primary=mapped_taxonomy,
+            source="LLM_JUDGE",
             created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
         db.add(fl)
         count += 1

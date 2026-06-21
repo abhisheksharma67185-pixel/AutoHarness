@@ -1,3 +1,4 @@
+from typing import Union
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -7,7 +8,7 @@ from app.domain.models import RunTask, TraceStep, FailureLabel
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 class OverrideTaxonomyRequest(BaseModel):
-    run_task_id: str
+    run_task_id: Union[int, str]
     taxonomy_label: str
 
 @router.post("/override")
@@ -33,12 +34,10 @@ def override_task_taxonomy(payload: OverrideTaxonomyRequest, db: Session = Depen
     else:
         fl = FailureLabel(
             run_task_id=payload.run_task_id,
-            run_id=run_task.run_id,
-            is_failure=True,
+            is_failure=1,
             source="MANUAL",
             taxonomy_primary=mapped_taxonomy,
-            diagnosis_text="Manually updated by user.",
-            raw_judge={}
+            diagnosis_text="Manually updated by user."
         )
         db.add(fl)
 

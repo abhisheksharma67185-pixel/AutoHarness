@@ -389,22 +389,22 @@ function WorkflowBuilder() {
         
         {/* Logs Panel */}
         {isLogsOpen && (
-          <aside className="w-80 bg-gray-900 text-gray-100 border-l border-gray-800 flex flex-col z-10">
-             <div className="p-3 border-b border-gray-800 flex justify-between items-center">
-               <h3 className="text-sm font-bold">Execution Logs</h3>
-               <button onClick={() => setIsLogsOpen(false)} className="text-gray-400 hover:text-white">&times;</button>
+          <aside className="w-80 bg-white/80 backdrop-blur-md border-l border-gray-200/80 flex flex-col z-10 shadow-xl">
+             <div className="p-3.5 border-b border-gray-200/80 flex justify-between items-center bg-gray-50/50">
+               <h3 className="text-[11px] font-bold text-gray-900 uppercase tracking-wider">Execution Logs</h3>
+               <button onClick={() => setIsLogsOpen(false)} className="text-gray-400 hover:text-gray-700 transition-colors text-lg font-bold leading-none">&times;</button>
              </div>
-             <div className="flex-1 overflow-y-auto p-4 space-y-3 font-mono text-xs">
+             <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-[11px]">
                {logs.length === 0 ? (
-                 <div className="text-gray-500 italic">No execution logs yet. Run the pipeline to see output.</div>
+                 <div className="text-gray-400 italic text-center py-8">No execution logs yet. Run the pipeline to see output.</div>
                ) : (
                  logs.map((log, i) => (
-                   <div key={i} className="border-b border-gray-800 pb-2 last:border-0">
-                     <div className="flex items-center gap-2 mb-1">
-                       <span className="text-purple-400 font-bold">Step {log.step}</span>
-                       <span className="text-gray-400">[{log.nodeType}]</span>
+                   <div key={i} className="border-b border-gray-100 pb-3 last:border-0">
+                     <div className="flex items-center gap-2">
+                       <span className="text-blue-600 font-bold">Step {log.step}</span>
+                       <span className="text-gray-400 font-semibold">[{log.nodeType.toUpperCase()}]</span>
                      </div>
-                     <div className="text-gray-300 break-words whitespace-pre-wrap">{log.message}</div>
+                     <div className="text-gray-600 break-words whitespace-pre-wrap leading-relaxed mt-1">{log.message}</div>
                    </div>
                  ))
                )}

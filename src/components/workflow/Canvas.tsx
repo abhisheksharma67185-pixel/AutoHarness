@@ -42,6 +42,8 @@ const nodeTypes: NodeTypes = {
   approval: ApprovalNode,
 };
 
+const edgeTypes = {};
+
 export interface WorkflowCanvasProps {
   initialNodes?: Node<BaseNodeData>[];
   initialEdges?: Edge[];
@@ -64,8 +66,7 @@ export function WorkflowCanvas({
   const [nodes, setNodes, onNodesChangeInternal] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChangeInternal] = useEdgesState(initialEdges);
 
-  // Memoize nodeTypes to avoid React Flow recreation warnings
-  const nodeTypesMemo = React.useMemo(() => nodeTypes, []);
+
 
   // Sync state with parent props when they change
   useEffect(() => {
@@ -127,7 +128,7 @@ export function WorkflowCanvas({
   };
 
   return (
-    <div className={`w-full h-full ${className}`}>
+    <div className={`w-full h-full ${className}`} style={{ width: '100%', height: '100%', minHeight: '600px' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -135,7 +136,8 @@ export function WorkflowCanvas({
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
         onSelectionChange={handleSelectionChange}
-        nodeTypes={nodeTypesMemo}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         edgesFocusable={true}
         nodesDraggable={true}
         nodesConnectable={true}

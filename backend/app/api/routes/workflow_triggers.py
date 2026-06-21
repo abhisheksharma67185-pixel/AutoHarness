@@ -18,10 +18,12 @@ from app.db.session import SessionLocal
 from datetime import datetime, timezone
 
 from app.api.routes.approvals import RUNS_DB, create_approval, APPROVALS_DB, CreateApprovalRequest
+from app.services.ollama_client import OllamaClient
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 WORKFLOWS_DB: dict[str, dict[str, Any]] = {}
+ollama_client = OllamaClient()
 
 JsonPrimitive = str | int | float | bool | None
 JsonValue = JsonPrimitive | list[Any] | dict[str, Any]
@@ -148,17 +150,18 @@ async def _execute_nodes_range(
             temperature = float(params.get("temperature") or 0.7)
 
             add_log(node.id, "LLM", f"Calling {model}")
-            async with httpx.AsyncClient(base_url="http://localhost:11434", timeout=60.0) as client:
-                llm_payload = {
-                    "model": model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"temperature": temperature},
-                }
-                llm_resp = await client.post("/api/generate", json=llm_payload)
-                llm_resp.raise_for_status()
-                llm_data = llm_resp.json()
-                node_output = llm_data.get("response", "")
+            try:
+                node_output = await ollama_client.generate(
+                    model=model,
+                    prompt=prompt,
+                    temperature=temperature
+                )
+                if node_output.startswith("Error:"):
+                    raise HTTPException(status_code=500, detail=node_output)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=f"LLM generate failed: {exc}")
             add_log(node.id, "LLM", f"response: '{str(node_output)[:80]}'")
 
         elif node_type == "http":

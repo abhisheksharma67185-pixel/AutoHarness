@@ -315,7 +315,7 @@ class FailureLabel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     run_task_id = Column(Integer, ForeignKey("run_tasks.id", ondelete="CASCADE"), nullable=False)
     is_failure = Column(Integer, nullable=False, default=1)
-    source = Column(String, nullable=False, default="llm")
+    source = Column(String, nullable=False, default="LLM_JUDGE")
     score = Column(Float, nullable=True)
     diagnosis_text = Column(Text, nullable=False)
     taxonomy_primary = Column(String, nullable=False)
