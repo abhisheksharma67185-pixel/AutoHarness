@@ -464,12 +464,13 @@ export default function ExperimentsClient({
             <div className="space-y-6">
               
               {/* Variant Tabs Selector */}
-              <div className="flex items-center gap-2 bg-black/30 p-1 rounded-lg border border-white/5">
+              {/* Variant Tabs Selector */}
+              <div className="flex items-center gap-2 bg-black/30 p-1 rounded-lg border border-white/5 overflow-x-auto max-w-full scrollbar-thin">
                 {expDetails.variants.map((v, i) => (
                   <button
                     key={v.id}
                     onClick={() => setActiveVariantId(String(v.id))}
-                    className={`flex-1 text-[11px] py-2 px-3 rounded font-bold transition-all ${
+                    className={`flex-none whitespace-nowrap text-[11px] py-1.5 px-3 rounded font-bold transition-all ${
                       activeVariantId === String(v.id)
                         ? 'bg-purple-600 text-white shadow shadow-purple-500/20'
                         : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -481,7 +482,7 @@ export default function ExperimentsClient({
                 
                 <button
                   onClick={handleAddVariant}
-                  className="px-3 py-2 text-purple-400 hover:text-purple-300 rounded hover:bg-white/5 text-[11px] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+                  className="px-3 py-1.5 text-purple-400 hover:text-purple-300 rounded hover:bg-white/5 text-[11px] font-bold flex items-center gap-1 shrink-0 cursor-pointer whitespace-nowrap"
                   title="Add candidate variant"
                 >
                   <Plus size={12} /> Add Variant
