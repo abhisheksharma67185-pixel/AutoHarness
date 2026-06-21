@@ -285,7 +285,7 @@ function WorkflowBuilder() {
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <Link href="/" className="text-purple-600 hover:text-purple-800">←</Link>
-            AutoHarness 2.0 <span className="text-sm font-normal text-gray-500">Visual Workflow Builder</span>
+            AutoHarness
           </h1>
           <p className="text-xs text-gray-500 mt-0.5 ml-8">
             Visual AI workflow builder for execution, validation, HTTP calls, database queries, and local LLM runs.
