@@ -54,6 +54,7 @@ export default function ExperimentsClient({
   const [showAddVariantModal, setShowAddVariantModal] = useState(false);
   const [newVariantLabel, setNewVariantLabel] = useState('');
   const [addingVariant, setAddingVariant] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   // Linker state
   const [linkRunId, setLinkRunId] = useState('');
@@ -238,12 +239,14 @@ export default function ExperimentsClient({
   // Add variant handlers
   const handleAddVariant = () => {
     setNewVariantLabel('');
+    setErrorMsg(null);
     setShowAddVariantModal(true);
   };
 
   const submitAddVariant = async () => {
     const label = newVariantLabel.trim() || `candidate-variant-${expDetails.variants.length + 1}`;
     setAddingVariant(true);
+    setErrorMsg(null);
 
     const varVersion = `v1.0.0-var-${expDetails.variants.length + 1}-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -276,11 +279,11 @@ export default function ExperimentsClient({
         setShowAddVariantModal(false);
         setNewVariantLabel('');
       } else {
-        alert(data.error || 'Failed to add variant');
+        setErrorMsg(data.error || 'Failed to add variant');
       }
     } catch (err) {
       console.error(err);
-      alert('Error adding variant');
+      setErrorMsg('Error occurred while adding variant.');
     } finally {
       setAddingVariant(false);
     }
@@ -672,6 +675,12 @@ export default function ExperimentsClient({
               <FlaskConical size={16} className="text-purple-400" />
               Add Candidate Variant
             </h3>
+            
+            {errorMsg && (
+              <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded">
+                {errorMsg}
+              </div>
+            )}
             
             <div className="space-y-2">
               <label className="text-[10px] text-gray-500 font-bold uppercase block">
