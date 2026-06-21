@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { fetchWithBypass, getBackendUrl } from '@/lib/api-helper';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const response = await fetchWithBypass(getBackendUrl('/ollama/models'), {
+    const host = req.headers.get('host');
+    const response = await fetchWithBypass(getBackendUrl('/ollama/models', host), {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });

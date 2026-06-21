@@ -1,7 +1,35 @@
+const fs = require('fs');
+const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = "https://yngvpwjlurguvdnpiegs.supabase.co";
-const serviceRoleKey = "REDACTED_SERVICE_ROLE_KEY";
+// Try to load from .env file
+try {
+  const envPath = path.resolve(__dirname, '../.env');
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split('\n').forEach(line => {
+      const parts = line.split('=');
+      if (parts.length >= 2) {
+        const key = parts[0].trim();
+        let val = parts.slice(1).join('=').trim();
+        if (val.startsWith('"') && val.endsWith('"')) {
+          val = val.slice(1, -1);
+        }
+        process.env[key] = val;
+      }
+    });
+  }
+} catch (e) {
+  // Ignore
+}
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://yngvpwjlurguvdnpiegs.supabase.co";
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!serviceRoleKey) {
+  console.error("Error: SUPABASE_SERVICE_ROLE_KEY is not defined in the environment or .env file.");
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: {

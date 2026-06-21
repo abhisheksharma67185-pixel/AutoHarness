@@ -39,6 +39,13 @@ def cluster_failure_modes(
     try:
         model_name = embedding_model or llm_client.model
 
+        # Auto-embed failure labels first
+        from app.jobs.embed_failure_labels import embed_failure_labels
+        try:
+            embed_failure_labels(db, benchmark_slug, run_ids, model_name)
+        except Exception as e:
+            log.warning(f"Failed to generate embeddings during cluster job: {e}. Proceeding with existing embeddings.")
+
         # 1. Fetch target run IDs
         run_query = db.query(Run).filter(Run.benchmark_slug == benchmark_slug)
         if run_ids:
@@ -90,10 +97,15 @@ def cluster_failure_modes(
         else:
             X_reduced = X
 
+        # Dynamically scale down min_cluster_size if number of samples is small
+        actual_min_cluster_size = min_cluster_size
+        if n_samples < min_cluster_size * 2:
+            actual_min_cluster_size = max(2, n_samples // 2)
+
         # Run clustering
-        if n_samples >= min_cluster_size:
+        if n_samples >= actual_min_cluster_size:
             try:
-                hdb = HDBSCAN(min_cluster_size=min_cluster_size, allow_single_cluster=True)
+                hdb = HDBSCAN(min_cluster_size=actual_min_cluster_size, allow_single_cluster=True)
                 labels_pred = hdb.fit_predict(X_reduced)
             except Exception as e:
                 log.warning(f"HDBSCAN failed: {e}. Treating all as noise.")
@@ -117,7 +129,7 @@ def cluster_failure_modes(
         # Filter out clusters smaller than min_cluster_size
         valid_clusters = {}
         for c_id, members in clusters_dict.items():
-            if len(members) < min_cluster_size:
+            if len(members) < actual_min_cluster_size:
                 noise_count += len(members)
                 continue
             valid_clusters[c_id] = members

@@ -13,8 +13,9 @@ export async function GET(req: NextRequest, { params }: Params) {
     const path = slug ? `/${slug.join('/')}` : '';
     const url = new URL(req.url);
     const search = url.search;
+    const host = req.headers.get('host');
     
-    const response = await fetchWithBypass(getBackendUrl(`/workflows${path}${search}`), {
+    const response = await fetchWithBypass(getBackendUrl(`/workflows${path}${search}`, host), {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -40,8 +41,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { slug } = await params;
     const path = slug ? `/${slug.join('/')}` : '';
     const body = await req.json().catch(() => null);
+    const host = req.headers.get('host');
 
-    const response = await fetchWithBypass(getBackendUrl(`/workflows${path}`), {
+    const response = await fetchWithBypass(getBackendUrl(`/workflows${path}`, host), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,

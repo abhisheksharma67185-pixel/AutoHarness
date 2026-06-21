@@ -142,8 +142,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const host = req.headers.get('host') || process.env.VERCEL_URL || 'localhost:3000';
+    const backendUrl = host.includes('localhost') || host.includes('127.0.0.1')
+      ? 'http://localhost:8001/api/v1'
+      : `https://${host}/_/backend/api/v1`;
+
     const body = await req.json();
-    const response = await fetch(`${BACKEND}/runs/failure-modes/update`, {
+    const response = await fetch(`${backendUrl}/runs/failure-modes/update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)

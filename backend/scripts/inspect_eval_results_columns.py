@@ -22,7 +22,13 @@ def main():
     conn_ah.close()
 
     # Postgres
-    url = 'postgresql://postgres.yngvpwjlurguvdnpiegs:joztus-vobje5-sIxsiw@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres'
+    import sys
+    sys.path.insert(0, "/Users/abhisheksharma/Projects/AutoHarness-Studio/backend")
+    from app.core.settings import get_settings
+    settings = get_settings()
+    url = str(settings.database_url)
+    if url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
     conn_pg = psycopg2.connect(url, sslmode="require")
     cur_pg = conn_pg.cursor()
     cur_pg.execute("""

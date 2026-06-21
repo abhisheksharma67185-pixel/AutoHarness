@@ -25,10 +25,11 @@ export function sendError(code: string, message: string, details: any = null, st
   }, { status });
 }
 
-export function getBackendUrl(path: string = ''): string {
+export function getBackendUrl(path: string = '', host?: string | null): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/_/backend/api/v1${cleanPath}`;
+  const baseHost = host || process.env.VERCEL_URL;
+  if (baseHost) {
+    return `https://${baseHost}/_/backend/api/v1${cleanPath}`;
   }
   return `http://localhost:8001/api/v1${cleanPath}`;
 }

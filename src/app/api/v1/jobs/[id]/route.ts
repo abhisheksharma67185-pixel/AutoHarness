@@ -28,8 +28,13 @@ export async function GET(req: NextRequest, { params }: Params) {
       return sendSuccess(localJob);
     }
 
+    const host = req.headers.get('host') || process.env.VERCEL_URL || 'localhost:3000';
+    const backendUrl = host.includes('localhost') || host.includes('127.0.0.1')
+      ? 'http://localhost:8001/api/v1'
+      : `https://${host}/_/backend/api/v1`;
+
     // Fallback to FastAPI backend
-    const response = await fetch(`${BACKEND}/jobs/${id}`, { cache: 'no-store' });
+    const response = await fetch(`${backendUrl}/jobs/${id}`, { cache: 'no-store' });
     const data = await response.json();
 
     if (!response.ok) {

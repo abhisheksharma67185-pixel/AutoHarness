@@ -15,8 +15,9 @@ interface BackendError {
 export async function POST(req: NextRequest) {
   try {
     const payload = (await req.json()) as GeneratePayload;
+    const host = req.headers.get('host');
 
-    const response = await fetchWithBypass(getBackendUrl('/ollama/generate'), {
+    const response = await fetchWithBypass(getBackendUrl('/ollama/generate', host), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

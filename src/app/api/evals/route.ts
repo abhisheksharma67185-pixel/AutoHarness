@@ -139,6 +139,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const host = req.headers.get('host') || process.env.VERCEL_URL || 'localhost:3000';
+    const backendUrl = host.includes('localhost') || host.includes('127.0.0.1')
+      ? 'http://localhost:8001/api/v1'
+      : `https://${host}/_/backend/api/v1`;
+
     const body = await req.json();
     const { action } = body;
 
@@ -149,7 +154,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Missing name or description' }, { status: 400 });
       }
 
-      const res = await fetch(`${BACKEND}/eval-suites/`, {
+      const res = await fetch(`${backendUrl}/eval-suites`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -183,7 +188,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
       }
 
-      const res = await fetch(`${BACKEND}/eval-suites/from-failure-mode`, {
+      const res = await fetch(`${backendUrl}/eval-suites/from-failure-mode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -217,7 +222,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Fetch task from backend
-      const taskRes = await fetch(`${BACKEND}/tasks/${run_task_id}`, { cache: 'no-store' });
+      const taskRes = await fetch(`${backendUrl}/tasks/${run_task_id}`, { cache: 'no-store' });
       if (!taskRes.ok) {
         return NextResponse.json({ error: 'Run task not found' }, { status: 404 });
       }
@@ -232,7 +237,7 @@ export async function POST(req: NextRequest) {
         setup_required: 'Setup corresponding repository workspace environment.',
       };
 
-      const res = await fetch(`${BACKEND}/eval-suites/${eval_suite_id}/cases`, {
+      const res = await fetch(`${backendUrl}/eval-suites/${eval_suite_id}/cases`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

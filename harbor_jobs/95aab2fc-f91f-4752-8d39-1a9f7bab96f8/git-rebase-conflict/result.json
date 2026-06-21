@@ -1,0 +1,9 @@
+{
+  "task": "git-rebase-conflict",
+  "task_id": "tb2-git-rebase-conflict",
+  "category": "git",
+  "difficulty": "hard",
+  "status": "PASS",
+  "score": 1.0,
+  "description": "Rebase feature branch onto origin/main resolving a merge conflict in lib/core.py."
+}

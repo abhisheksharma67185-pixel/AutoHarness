@@ -56,7 +56,7 @@ export default function FailureModesClient({
           action: 'create_suite_from_failure_mode',
           name: `Eval Suite: ${activeMode.title}`,
           description: `Generated evaluation suite targeting the failure mode: ${activeMode.title} (${activeMode.description})`,
-          failure_mode_id: String(activeMode.id),
+          failure_mode_id: String(activeMode.id).startsWith('fm') ? String(activeMode.id).slice(2) : String(activeMode.id),
           max_cases: 20
         })
       });

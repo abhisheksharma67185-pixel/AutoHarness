@@ -192,6 +192,11 @@ guardrails:
 
 export async function POST(req: NextRequest) {
   try {
+    const host = req.headers.get('host') || process.env.VERCEL_URL || 'localhost:3000';
+    const backendUrl = host.includes('localhost') || host.includes('127.0.0.1')
+      ? 'http://localhost:8001/api/v1'
+      : `https://${host}/_/backend/api/v1`;
+
     const body = await req.json();
     const { action } = body;
 
@@ -208,11 +213,14 @@ export async function POST(req: NextRequest) {
 
       // Build targets array from failure mode IDs
       const targets = Array.isArray(target_modes)
-        ? target_modes.map((id: string | number) => ({
-            type: 'failure_mode',
-            id: String(id),
-            desired_delta: 0.2,
-          }))
+        ? target_modes.map((id: string | number) => {
+            const cleanId = String(id).startsWith('fm') ? String(id).slice(2) : String(id);
+            return {
+              type: 'failure_mode',
+              id: cleanId,
+              desired_delta: 0.2,
+            };
+          })
         : [];
 
       const normalizedRegressionPolicy = {
@@ -234,13 +242,20 @@ export async function POST(req: NextRequest) {
         regression_policy: normalizedRegressionPolicy,
       };
 
-      const res = await fetch(`${BACKEND}/experiments/`, {
+      const res = await fetch(`${backendUrl}/experiments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const responseText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch (e: any) {
+        console.error(`FAILED TO PARSE JSON FROM BACKEND URL: ${backendUrl}/experiments. Status: ${res.status}. Body: ${responseText.slice(0, 500)}`);
+        throw new Error(`Invalid JSON response from backend: ${responseText.slice(0, 100)}`);
+      }
       if (!res.ok) {
         return NextResponse.json({ error: data.detail || 'Failed to create experiment' }, { status: res.status });
       }
@@ -263,7 +278,7 @@ export async function POST(req: NextRequest) {
       }
 
       // 1. Fetch details of the selected run to get its harness_version
-      const runRes = await fetch(`${BACKEND}/runs/${run_id}`, { cache: 'no-store' });
+      const runRes = await fetch(`${backendUrl}/runs/${run_id}`, { cache: 'no-store' });
       if (!runRes.ok) {
         return NextResponse.json({ error: 'Failed to fetch run details' }, { status: runRes.status });
       }
@@ -275,7 +290,7 @@ export async function POST(req: NextRequest) {
       }
 
       // 2. Fetch all eval runs to find the ones matching the run's harness_version_id
-      const evalRunsRes = await fetch(`${BACKEND}/eval-runs`, { cache: 'no-store' });
+      const evalRunsRes = await fetch(`${backendUrl}/eval-runs`, { cache: 'no-store' });
       if (!evalRunsRes.ok) {
         return NextResponse.json({ error: 'Failed to fetch eval runs' }, { status: evalRunsRes.status });
       }
@@ -286,7 +301,7 @@ export async function POST(req: NextRequest) {
 
       // 3. Link each matching eval run to this variant
       for (const er of matchingEvalRuns) {
-        await fetch(`${BACKEND}/experiments/${experiment_id}/variants/${variant_id}/link-eval-run`, {
+        await fetch(`${backendUrl}/experiments/${experiment_id}/variants/${variant_id}/link-eval-run`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ eval_run_id: er.id }),
@@ -294,7 +309,7 @@ export async function POST(req: NextRequest) {
       }
 
       // 4. Compute promotion
-      const promotionRes = await fetch(`${BACKEND}/experiments/${experiment_id}/variants/${variant_id}/compute-promotion`, {
+      const promotionRes = await fetch(`${backendUrl}/experiments/${experiment_id}/variants/${variant_id}/compute-promotion`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -326,7 +341,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Missing experiment_id or variant_label' }, { status: 400 });
       }
 
-      const res = await fetch(`${BACKEND}/experiments/${experiment_id}/variants`, {
+      const res = await fetch(`${backendUrl}/experiments/${experiment_id}/variants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

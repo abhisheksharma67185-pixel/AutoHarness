@@ -6,20 +6,21 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { type, ...payload } = body;
+    const host = req.headers.get('host');
 
     let endpoint = '';
     switch (type) {
       case 'diagnose':
-        endpoint = getBackendUrl('/jobs/diagnose-failures');
+        endpoint = getBackendUrl('/jobs/diagnose-failures', host);
         break;
       case 'cluster':
-        endpoint = getBackendUrl('/jobs/cluster');
+        endpoint = getBackendUrl('/jobs/cluster', host);
         break;
       case 'recluster':
-        endpoint = getBackendUrl('/jobs/recluster-failure-modes');
+        endpoint = getBackendUrl('/jobs/recluster-failure-modes', host);
         break;
       case 'embed':
-        endpoint = getBackendUrl('/jobs/embed-failure-labels');
+        endpoint = getBackendUrl('/jobs/embed-failure-labels', host);
         break;
       default:
         return NextResponse.json({ error: `Unknown job type: ${type}` }, { status: 400 });
@@ -60,7 +61,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Missing job_id' }, { status: 400 });
     }
 
-    const res = await fetchWithBypass(getBackendUrl(`/jobs/${encodeURIComponent(job_id)}`), { cache: 'no-store' });
+    const host = req.headers.get('host');
+    const res = await fetchWithBypass(getBackendUrl(`/jobs/${encodeURIComponent(job_id)}`, host), { cache: 'no-store' });
     const data = await res.json();
 
     if (!res.ok) {

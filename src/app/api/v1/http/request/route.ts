@@ -19,8 +19,9 @@ interface BackendError {
 export async function POST(req: NextRequest) {
   try {
     const payload = (await req.json()) as HttpRequestPayload;
+    const host = req.headers.get('host');
 
-    const response = await fetchWithBypass(getBackendUrl('/http/request'), {
+    const response = await fetchWithBypass(getBackendUrl('/http/request', host), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

@@ -183,9 +183,7 @@ def ingest_harbor_job(
             category_scores[category] = []
         category_scores[category].append(score)
 
-        task_id = str(uuid.uuid4())
         run_task = RunTask(
-            id=task_id,
             run_id=run_id,
             benchmark_task_id=_to_string_id(trial_result.get("task_id") or task_slug),
             task_slug=task_slug,
@@ -203,7 +201,7 @@ def ingest_harbor_job(
         steps = _parse_trajectory(trial_dir)
         for step_dict in steps:
             trace_step = TraceStep(
-                run_task_id=task_id,
+                run_task_id=run_task.id,
                 step_index=step_dict["step_index"],
                 step_type=step_dict["step_type"],
                 content=step_dict["content"],

@@ -1,0 +1,9 @@
+{
+  "task": "nginx-port-clash",
+  "task_id": "tb2-nginx-port-clash",
+  "category": "networking",
+  "difficulty": "medium",
+  "status": "PASS",
+  "score": 1.0,
+  "description": "Nginx fails to start because port 80 is occupied by Apache. Diagnose and fix the port conflict."
+}

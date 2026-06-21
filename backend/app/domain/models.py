@@ -157,10 +157,12 @@ class Run(Base):
     __tablename__ = "runs"
     __table_args__ = {"extend_existing": True}
     id = Column(String, primary_key=True, index=True)
+    job_id = Column(String, unique=True, index=True, nullable=True)
     benchmark_id = Column(Integer, ForeignKey("benchmarks.id"), nullable=False)
     agent_name = Column(String, index=True)
     harness_version_id = Column(Integer, ForeignKey("harness_versions.id"), nullable=True)
     run_label = Column(String, index=True)
+    status = Column(String, nullable=False, default="completed")
     metrics = Column("metrics", JSONText, nullable=False)
     raw_artifact_uri = Column(Text, nullable=True)
     global_score = Column(Float, default=0.0)
