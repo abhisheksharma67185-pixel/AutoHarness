@@ -413,7 +413,7 @@ export default function TaskExplorerClient({
                   className={`text-[10px] py-1.5 rounded font-bold transition-colors ${
                     statusFilter === status
                       ? 'bg-purple-600 text-white border border-purple-500/20 hover:bg-purple-600/70'
-                      : 'bg-transparent !text-slate-700 border border-transparent hover:bg-purple-600/10 hover:text-white'
+                      : 'bg-transparent !text-slate-400 border border-transparent hover:bg-purple-600/10 hover:text-white'
                   }`}
                 >
                   {status}

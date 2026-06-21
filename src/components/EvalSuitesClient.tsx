@@ -239,7 +239,7 @@ export default function EvalSuitesClient({
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-mono text-[9px] text-gray-500 font-bold">{c.task_id}</span>
-                              <span className="text-xs font-bold text-slate-800">{c.slug}</span>
+                              <span className="text-xs font-bold text-slate-200">{c.slug}</span>
                             </div>
                             <p className="text-[10px] text-gray-400 leading-normal mt-1">{c.description}</p>
                           </div>
@@ -289,7 +289,7 @@ export default function EvalSuitesClient({
                       return (
                         <div key={r.id || idx} className="p-4 flex items-center justify-between hover:bg-white/[0.01]">
                           <div>
-                            <div className="text-xs font-bold text-slate-800">Harness Version: {r.harness_version}</div>
+                            <div className="text-xs font-bold text-slate-200">Harness Version: {r.harness_version}</div>
                             <div className="text-[10px] text-gray-500 flex items-center gap-1 mt-1">
                               <Calendar size={10} />
                               {new Date(r.created_at || Date.now()).toLocaleDateString()}
