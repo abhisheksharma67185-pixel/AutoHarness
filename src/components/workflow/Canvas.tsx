@@ -64,6 +64,9 @@ export function WorkflowCanvas({
   const [nodes, setNodes, onNodesChangeInternal] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChangeInternal] = useEdgesState(initialEdges);
 
+  // Memoize nodeTypes to avoid React Flow recreation warnings
+  const nodeTypesMemo = React.useMemo(() => nodeTypes, []);
+
   // Sync state with parent props when they change
   useEffect(() => {
     setNodes(initialNodes);
@@ -132,7 +135,7 @@ export function WorkflowCanvas({
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
         onSelectionChange={handleSelectionChange}
-        nodeTypes={nodeTypes}
+        nodeTypes={nodeTypesMemo}
         edgesFocusable={true}
         nodesDraggable={true}
         nodesConnectable={true}

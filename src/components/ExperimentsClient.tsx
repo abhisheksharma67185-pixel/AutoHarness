@@ -51,6 +51,9 @@ export default function ExperimentsClient({
 
   // Variant selector
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
+  const [showAddVariantModal, setShowAddVariantModal] = useState(false);
+  const [newVariantLabel, setNewVariantLabel] = useState('');
+  const [addingVariant, setAddingVariant] = useState(false);
   
   // Linker state
   const [linkRunId, setLinkRunId] = useState('');
@@ -232,10 +235,15 @@ export default function ExperimentsClient({
     }
   };
 
-  // Add variant handler
-  const handleAddVariant = async () => {
-    const label = prompt('Enter variant label:', `candidate-variant-${expDetails.variants.length + 1}`);
-    if (!label) return;
+  // Add variant handlers
+  const handleAddVariant = () => {
+    setNewVariantLabel('');
+    setShowAddVariantModal(true);
+  };
+
+  const submitAddVariant = async () => {
+    const label = newVariantLabel.trim() || `candidate-variant-${expDetails.variants.length + 1}`;
+    setAddingVariant(true);
 
     const varVersion = `v1.0.0-var-${expDetails.variants.length + 1}-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -265,12 +273,16 @@ export default function ExperimentsClient({
             setActiveVariantId(String(newVar.id));
           }
         }
+        setShowAddVariantModal(false);
+        setNewVariantLabel('');
       } else {
         alert(data.error || 'Failed to add variant');
       }
     } catch (err) {
       console.error(err);
       alert('Error adding variant');
+    } finally {
+      setAddingVariant(false);
     }
   };
 
@@ -466,7 +478,7 @@ export default function ExperimentsClient({
                 
                 <button
                   onClick={handleAddVariant}
-                  className="px-3 py-2 text-purple-400 hover:text-purple-300 rounded hover:bg-white/5 text-[11px] font-bold flex items-center gap-1 shrink-0"
+                  className="px-3 py-2 text-purple-400 hover:text-purple-300 rounded hover:bg-white/5 text-[11px] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
                   title="Add candidate variant"
                 >
                   <Plus size={12} /> Add Variant
@@ -652,6 +664,53 @@ export default function ExperimentsClient({
         </div>
 
       </div>
+
+      {showAddVariantModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass-panel p-6 max-w-md w-full space-y-4 shadow-2xl border border-white/10 bg-zinc-950/95">
+            <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+              <FlaskConical size={16} className="text-purple-400" />
+              Add Candidate Variant
+            </h3>
+            
+            <div className="space-y-2">
+              <label className="text-[10px] text-gray-500 font-bold uppercase block">
+                Variant Label
+              </label>
+              <input
+                type="text"
+                autoFocus
+                placeholder={`candidate-variant-${expDetails.variants.length + 1}`}
+                value={newVariantLabel}
+                onChange={(e) => setNewVariantLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitAddVariant();
+                }}
+                className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddVariantModal(false)}
+                className="px-3 py-1.5 text-xs bg-white/5 border border-white/10 rounded hover:bg-white/10 text-gray-300 font-semibold transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitAddVariant}
+                disabled={addingVariant}
+                className="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded font-semibold transition-all cursor-pointer"
+              >
+                {addingVariant ? 'Adding...' : 'Add Variant'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

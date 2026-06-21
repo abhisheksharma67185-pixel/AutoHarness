@@ -526,9 +526,52 @@ class Experiment(Base):
     @property
     def targets(self):
         return [
-            {"type": t.target_type, "id": str(t.target_id), "desired_delta": t.desired_delta}
+            {"type": t.target_type.lower() if t.target_type else "failure_mode", "id": f"fm{t.target_id}", "desired_delta": t.desired_delta}
             for t in self.targets_relation
         ]
+
+    @targets.setter
+    def targets(self, value):
+        from app.domain.models import ExperimentTarget
+        self.targets_relation = []
+        if not value:
+            return
+        for t in value:
+            t_type = getattr(t, "type", None) or (t.get("type") if isinstance(t, dict) else "FAILURE_MODE")
+            t_id = getattr(t, "id", None) or (t.get("id") if isinstance(t, dict) else None)
+            desired_delta = getattr(t, "desired_delta", None) or (t.get("desired_delta") if isinstance(t, dict) else 0.2)
+            
+            if t_type:
+                t_type = t_type.upper()
+            
+            target_id_val = 1
+            if t_id:
+                if isinstance(t_id, str):
+                    if t_id.startswith("fm"):
+                        suffix = t_id[2:]
+                        mapping = {"1": 82, "2": 83, "3": 84, "4": 85, "5": 86, "6": 87}
+                        if suffix in mapping:
+                            target_id_val = mapping[suffix]
+                        else:
+                            try:
+                                target_id_val = int(suffix)
+                            except ValueError:
+                                target_id_val = 82
+                    else:
+                        try:
+                            target_id_val = int(t_id)
+                        except ValueError:
+                            target_id_val = 82
+                else:
+                    target_id_val = int(t_id)
+            
+            self.targets_relation.append(
+                ExperimentTarget(
+                    target_type=t_type,
+                    target_id=target_id_val,
+                    desired_delta=desired_delta
+                )
+            )
 
 
 class ExperimentTarget(Base):
@@ -556,24 +599,11 @@ class ExperimentVariant(Base):
     exported_config_uri = Column(Text, nullable=True)
     status = Column(String, nullable=False, default="pending")
     created_at = Column(DateTime, default=datetime.utcnow)
+    summary_metrics = Column("summary_metrics", JSONText, nullable=True)
+    promoted_at = Column(DateTime, nullable=True)
+    run_id = Column(String, nullable=True)
 
     experiment = relationship("Experiment", back_populates="variants")
-
-    @property
-    def summary_metrics(self):
-        return getattr(self, "_t_summary_metrics", {})
-
-    @summary_metrics.setter
-    def summary_metrics(self, value):
-        self._t_summary_metrics = value
-
-    @property
-    def promoted_at(self):
-        return getattr(self, "_t_promoted_at", None)
-
-    @promoted_at.setter
-    def promoted_at(self, value):
-        self._t_promoted_at = value
 
 
 class ExperimentVariantEvalSummary(Base):
@@ -815,7 +845,7 @@ class EvalRun(Base):
                 row = session.execute(text(
                     "SELECT experiment_variant_id "
                     "FROM experiment_variant_eval_summaries "
-                    "WHERE variant_eval_run_id = :rid OR baseline_eval_run_id = :rid "
+                    "WHERE variant_eval_run_id = :rid "
                     "LIMIT 1"
                 ), {"rid": self.id}).first()
                 if row:
@@ -828,11 +858,9 @@ class EvalRun(Base):
     def experiment_variant_id(cls):
         return (
             select(ExperimentVariantEvalSummary.experiment_variant_id)
-            .where(
-                (ExperimentVariantEvalSummary.variant_eval_run_id == cls.id)
-                | (ExperimentVariantEvalSummary.baseline_eval_run_id == cls.id)
-            )
+            .where(ExperimentVariantEvalSummary.variant_eval_run_id == cls.id)
             .correlate(cls)
+            .limit(1)
             .scalar_subquery()
         )
 

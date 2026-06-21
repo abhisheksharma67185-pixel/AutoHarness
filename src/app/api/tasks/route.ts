@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
         status: task.status,
         score: task.score,
         task_id: task.benchmark_tasks?.task_id,
-        slug: task.task_slug || `task-${task.benchmark_tasks?.task_id}`,
+        slug: task.benchmark_tasks?.title || `task-${task.benchmark_tasks?.task_id}`,
         category: task.benchmark_tasks?.category,
         difficulty: task.benchmark_tasks?.difficulty,
         description: desc,
@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
       query = query.eq('benchmark_tasks.category', category);
     }
 
-    query = query.order('task_slug', { ascending: true });
+    query = query.order('title', { referencedTable: 'benchmark_tasks', ascending: true });
 
     const { data: rows, error } = await query;
 
@@ -155,7 +155,7 @@ export async function GET(req: NextRequest) {
         status: t.status,
         score: t.score,
         task_id: t.benchmark_tasks?.task_id,
-        slug: t.task_slug || `task-${t.benchmark_tasks?.task_id}`,
+        slug: t.benchmark_tasks?.title || `task-${t.benchmark_tasks?.task_id}`,
         category: t.benchmark_tasks?.category,
         difficulty: t.benchmark_tasks?.difficulty,
         description: desc,

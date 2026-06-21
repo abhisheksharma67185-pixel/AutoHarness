@@ -39,7 +39,6 @@ export async function GET(req: NextRequest) {
             run_id,
             status,
             score,
-            task_slug,
             raw_result,
             benchmark_task_id,
             benchmark_tasks!inner (
@@ -92,7 +91,7 @@ export async function GET(req: NextRequest) {
           status: rt.status,
           score: rt.score,
           task_id: bt.task_id,
-          slug: rt.task_slug || `task-${bt.task_id}`,
+          slug: bt.title || `task-${bt.task_id}`,
           category: bt.category,
           difficulty: bt.difficulty,
           description: desc,

@@ -2,17 +2,17 @@
 @import "tailwindcss";
 
 :root {
-  /* HSL Color System - Light Mode Refined (Sleek Cornflower Blue Accent) */
+  /* HSL Color System - Google Stitch Light Mode Refined */
   --bg-base: 240 10% 97.5%;      /* light grey-blue off-white */
   --bg-card: 0 0% 100%;          /* pure white card surface */
   --bg-card-hover: 240 5% 95%;   /* soft grey on hover */
-  --border-glow: 219 85% 60%;
   
   --foreground: 240 10% 12%;      /* deep slate for readability */
   --foreground-muted: 240 5% 45%; /* neutral grey for secondary texts */
   
-  --primary: 219 85% 60%;        /* strong premium cornflower blue accent (#4f8dfc) */
+  --primary: 219 85% 60%;        /* premium cornflower blue accent (#4f8dfc) */
   --primary-glow: rgba(79, 141, 252, 0.06);
+  --border-glow: 219 85% 60%;
   
   --emerald: 150 84% 37%;        /* green */
   --amber: 35 92% 50%;          /* amber */
@@ -36,6 +36,14 @@ body {
   min-height: 100vh;
 }
 
+/* Redesign Headers with Space Grotesk */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Space Grotesk', 'Inter', -apple-system, sans-serif !important;
+  font-weight: 600 !important;
+  color: hsl(var(--foreground)) !important;
+  letter-spacing: -0.02em !important;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -52,15 +60,15 @@ body {
   background: rgba(0, 0, 0, 0.25);
 }
 
-/* Glassmorphism Styles */
+/* Glassmorphism Styles Redesign */
 .glass-panel {
   background: var(--glass-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--glass-border);
-  box-shadow: 0 4px 20px 0 var(--glass-shadow);
+  box-shadow: 0 8px 30px 0 rgba(0, 0, 0, 0.02);
   border-radius: 14px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-panel:hover {
@@ -73,60 +81,53 @@ body {
 }
 
 .glass-panel-interactive:hover {
-  box-shadow: 0 8px 32px 0 rgba(139, 92, 246, 0.05), 0 0 1px 1px hsl(var(--primary) / 0.2);
-  transform: translateY(-1px);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 12px 36px 0 rgba(79, 141, 252, 0.08), 0 0 1px 1px hsl(var(--primary) / 0.2);
+  transform: translateY(-2px);
 }
 
-/* Page Glow effects */
+/* Background Glow Effects */
 .radial-glow {
   position: absolute;
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.04) 0%, rgba(0,0,0,0) 70%);
+  width: 650px;
+  height: 650px;
+  background: radial-gradient(circle, rgba(79, 141, 252, 0.05) 0%, rgba(0,0,0,0) 70%);
   z-index: -1;
   pointer-events: none;
 }
 
-/* Header/Gradients */
+/* Text Gradient Styles */
 .text-gradient {
-  background: linear-gradient(135deg, #111827 30%, #6d28d9 100%);
+  background: linear-gradient(135deg, #0f172a 30%, #4f8dfc 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.text-gradient-purple {
-  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-/* Navigation layout */
+/* Navigation Layout */
 .nav-link {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 10px 16px;
   border-radius: 8px;
   color: hsl(var(--foreground-muted));
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   font-size: 0.95rem;
 }
 
 .nav-link:hover, .nav-link-active {
   color: hsl(var(--foreground));
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .nav-link-active {
-  border-left: 3px solid hsl(var(--primary));
+  border-left: 3px solid hsl(var(--primary)) !important;
   border-radius: 0 8px 8px 0;
-  background: linear-gradient(90deg, rgba(139, 92, 246, 0.04) 0%, rgba(0,0,0,0) 100%);
+  background: linear-gradient(90deg, rgba(79, 141, 252, 0.05) 0%, rgba(0,0,0,0) 100%) !important;
   color: hsl(var(--primary)) !important;
 }
 
-/* Table Style custom */
+/* Table Style Custom */
 .studio-table {
   width: 100%;
   border-collapse: collapse;
@@ -141,6 +142,7 @@ body {
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 .studio-table td {
@@ -153,11 +155,11 @@ body {
   background: rgba(0, 0, 0, 0.01);
 }
 
-/* Badge styles */
+/* Badges Redesign */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: 4px 10px;
   border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 600;
@@ -165,30 +167,30 @@ body {
 }
 
 .badge-success {
-  background: rgba(16, 185, 129, 0.1);
-  color: rgb(5, 150, 105);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: rgba(16, 185, 129, 0.1) !important;
+  color: rgb(5, 150, 105) !important;
+  border: 1px solid rgba(16, 185, 129, 0.2) !important;
 }
 
 .badge-fail {
-  background: rgba(239, 68, 68, 0.1);
-  color: rgb(220, 38, 38);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: rgb(220, 38, 38) !important;
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
 }
 
 .badge-warning {
-  background: rgba(245, 158, 11, 0.1);
-  color: rgb(217, 119, 6);
-  border: 1px solid rgba(245, 158, 11, 0.2);
+  background: rgba(245, 158, 11, 0.1) !important;
+  color: rgb(217, 119, 6) !important;
+  border: 1px solid rgba(245, 158, 11, 0.2) !important;
 }
 
 .badge-info {
-  background: rgba(59, 130, 246, 0.1);
-  color: rgb(37, 99, 235);
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: rgba(59, 130, 246, 0.1) !important;
+  color: rgb(37, 99, 235) !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
 }
 
-/* Terminal trajectory styling */
+/* Terminal Trajectory Styling */
 .terminal-block {
   background: #f8fafc;
   border: 1px solid rgba(0, 0, 0, 0.06);
@@ -205,16 +207,18 @@ body {
   border-left: 3px solid hsl(var(--primary));
   padding-left: 12px;
   margin-bottom: 12px;
-  color: #6d28d9;
+  color: #1e6ffd;
+  background-color: #ffffff;
+  border-radius: 4px;
 }
 
 .step-tool-call {
-  background: rgba(99, 102, 241, 0.06);
-  border-left: 3px solid #6366f1;
+  background: rgba(79, 141, 252, 0.06);
+  border-left: 3px solid #4f8dfc;
   padding: 8px 12px;
   border-radius: 0 6px 6px 0;
   margin-bottom: 12px;
-  color: #4338ca;
+  color: #1e6ffd;
 }
 
 .step-tool-output {
@@ -240,7 +244,7 @@ body {
 
 .dropzone:hover {
   border-color: hsl(var(--primary));
-  background: rgba(139, 92, 246, 0.03);
+  background: rgba(79, 141, 252, 0.03);
   color: hsl(var(--primary));
 }
 
@@ -252,35 +256,27 @@ body {
 }
 
 /* ==========================================
-   Light Mode Global Theme Overrides 
+   Global Theme Overrides
    ========================================== */
 
-/* 1. Global Typography: force standard dark slate color for readable headings and body elements */
-h1, h2, h3, h4, h5, h6 {
-  color: hsl(var(--foreground)) !important;
-}
-
-/* Target utility color text-white and map it to deep slate, excluding elements that must remain white */
+/* Typography overrides */
 .text-white:not(button):not(.btn):not(.badge):not([class*="bg-purple"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-blue"]):not([class*="bg-amber"]):not([class*="bg-gradient"]):not(svg):not(path) {
   color: hsl(var(--foreground)) !important;
 }
 
-/* Also ensure some specific labels/titles marked with text-white are dark slate */
 .glass-panel h3, .glass-panel h4, .glass-panel span.font-semibold {
   color: hsl(var(--foreground)) !important;
 }
 
-/* Secondary muted text */
 .text-gray-300, .text-gray-400, .text-slate-400, .text-zinc-400 {
   color: hsl(var(--foreground-muted)) !important;
 }
 
-/* Inactive status tab button hover */
 .text-gray-400.hover\:text-white:hover {
   color: hsl(var(--foreground)) !important;
 }
 
-/* 2. Global Background Overrides: convert dark transparent panels to white or very light grey surfaces */
+/* Background overrides */
 .bg-black\/10 {
   background-color: rgba(0, 0, 0, 0.02) !important;
 }
@@ -339,13 +335,24 @@ h1, h2, h3, h4, h5, h6 {
   border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
-/* 3. Inputs, selects & textareas */
+/* Inputs, selects & textareas */
 select, input[type="text"], input[type="number"], textarea {
   background-color: #ffffff !important;
   color: hsl(var(--foreground)) !important;
   border: 1px solid rgba(0, 0, 0, 0.12) !important;
   border-radius: 6px !important;
   padding: 6px 12px !important;
+  transition: all 0.2s ease;
+}
+
+select:hover, input[type="text"]:hover, input[type="number"]:hover, textarea:hover {
+  border-color: rgba(79, 141, 252, 0.4) !important;
+}
+
+select:focus, input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
+  border-color: #4f8dfc !important;
+  box-shadow: 0 0 0 3px rgba(79, 141, 252, 0.12) !important;
+  outline: none !important;
 }
 
 select option {
@@ -353,7 +360,7 @@ select option {
   color: hsl(var(--foreground)) !important;
 }
 
-/* Custom premium search input redesign classes */
+/* Search Input wrapper overrides */
 .search-wrapper {
   position: relative;
   width: 100%;
@@ -361,79 +368,32 @@ select option {
 
 input[type="text"].studio-search-input {
   width: 100% !important;
-  padding-left: 2.25rem !important; /* leaves space for Search icon */
-  padding-right: 2.25rem !important; /* leaves space for X/shortcut badge */
+  padding-left: 2.25rem !important;
+  padding-right: 2.25rem !important;
   background-color: rgba(0, 0, 0, 0.02) !important;
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
   border-radius: 8px !important;
-  font-size: 0.7rem !important;
+  font-size: 0.75rem !important;
   line-height: 1.5 !important;
   height: 36px !important;
   color: hsl(var(--foreground)) !important;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 input[type="text"].studio-search-input::placeholder {
   color: hsl(var(--foreground-muted)) !important;
   opacity: 0.6 !important;
-  font-size: 0.7rem !important;
-}
-
-input[type="text"].studio-search-input:hover {
-  background-color: rgba(0, 0, 0, 0.04) !important;
-  border-color: rgba(79, 141, 252, 0.25) !important;
 }
 
 input[type="text"].studio-search-input:focus {
   background-color: #ffffff !important;
-  border-color: #4f8dfc !important; /* var(--primary) accent */
-  box-shadow: 0 0 0 3px rgba(79, 141, 252, 0.12), 0 2px 4px rgba(0, 0, 0, 0.02) !important;
-  outline: none !important;
+  border-color: #4f8dfc !important;
 }
 
-/* Shortcut badge */
-.search-shortcut-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: inherit;
-  font-size: 9px;
-  font-weight: 600;
-  color: hsl(var(--foreground-muted)) !important;
-  background: rgba(0, 0, 0, 0.04) !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  border-radius: 4px;
-  padding: 2px 4px;
-  line-height: 1;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-  gap: 1px;
-}
-
-.clear-search-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: hsl(var(--foreground-muted)) !important;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  padding: 2px;
-  background: transparent !important;
-  border: none !important;
-  cursor: pointer;
-}
-
-.clear-search-btn:hover {
-  background: rgba(0, 0, 0, 0.06) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-/* 4. Active state backgrounds & highlighted elements */
+/* Premium gradient accents */
 .bg-purple-900\/10 {
   background-color: rgba(79, 141, 252, 0.08) !important;
 }
 
-/* Info Cards & Welcome Hero Banner gradients */
 .bg-gradient-to-br.from-indigo-950\/20.to-purple-950\/20 {
   background-image: linear-gradient(to bottom right, rgba(79, 141, 252, 0.04), rgba(79, 141, 252, 0.04)) !important;
 }
@@ -442,7 +402,7 @@ input[type="text"].studio-search-input:focus {
   background-image: linear-gradient(to right, rgba(79, 141, 252, 0.04), rgba(79, 141, 252, 0.04)) !important;
 }
 
-/* 5. Gating rules / Status Badges */
+/* Status overlays */
 .bg-red-950\/20 {
   background-color: rgba(239, 68, 68, 0.1) !important;
   color: rgb(220, 38, 38) !important;
@@ -487,7 +447,7 @@ input[type="text"].studio-search-input:focus {
   background-color: rgba(0, 0, 0, 0.08) !important;
 }
 
-/* Ensure colored background elements keep their white text & children white */
+/* Force text visibility in panels */
 [class*="bg-purple-600"], [class*="bg-purple-700"], [class*="bg-indigo-600"], [class*="bg-indigo-700"], [class*="bg-emerald-600"], [class*="bg-rose-600"], [class*="bg-red-600"], [class*="bg-amber-600"], [class*="bg-gradient-to-tr"] {
   color: #ffffff !important;
 }
@@ -496,7 +456,6 @@ input[type="text"].studio-search-input:focus {
   color: #ffffff !important;
 }
 
-/* Keep SVG line grids dark for visibility */
 svg line {
   stroke: rgba(0, 0, 0, 0.08) !important;
 }
@@ -515,25 +474,6 @@ pre.bg-\[\#020204\] {
   border-radius: 8px !important;
 }
 
-.step-agent-thought {
-  background-color: #ffffff !important;
-  border: 1px solid rgba(0, 0, 0, 0.06) !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-.step-tool-call span.text-purple-300 {
-  color: #4f8dfc !important;
-}
-
-.step-tool-output {
-  background-color: #f1f5f9 !important;
-  color: #334155 !important;
-  border: 1px solid rgba(0, 0, 0, 0.06) !important;
-}
-
-/* ==========================================
-   Cornflower Blue Accent Custom Class Overrides 
-   ========================================== */
 .text-purple-300, .text-purple-400, .text-purple-500, .text-purple-600, .text-indigo-400, .text-indigo-500, .text-indigo-600, .text-gradient-purple {
   color: #4f8dfc !important;
   background: none !important;
@@ -585,15 +525,9 @@ pre.bg-\[\#020204\] {
   color: #1e6ffd !important;
 }
 
-.nav-link-active {
-  color: #4f8dfc !important;
-  border-left-color: #4f8dfc !important;
-  background: linear-gradient(90deg, rgba(79, 141, 252, 0.04) 0%, rgba(0, 0, 0, 0) 100%) !important;
-}
-
 aside .bg-purple-50 {
   background-color: #f0f6ff !important;
-  border-left-color: #4f8dfc !important;
+  border-left: 2px solid #4f8dfc !important;
   color: #4f8dfc !important;
 }
 
@@ -605,12 +539,6 @@ aside .text-purple-600 {
   color: #4f8dfc !important;
 }
 
-/* Fix brand Σ icon container layout */
 aside .bg-gradient-to-tr.from-purple-600.to-indigo-500 {
   background-image: linear-gradient(to top right, #4f8dfc, #1e6ffd) !important;
-}
-
-/* Make sure active navigation link text maps to cornflower blue */
-.nav-link-active {
-  color: #4f8dfc !important;
 }

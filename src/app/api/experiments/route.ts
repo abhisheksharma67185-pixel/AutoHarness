@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
       const { data: varRows } = await supabaseServer
         .from('experiment_variants')
         .select(`
-          id, variant_label, status, config_diff,
+          id, variant_label, status, config_diff, summary_metrics, promoted_at, run_id,
           harness_versions ( name )
         `)
         .eq('experiment_id', expId);
@@ -86,21 +86,59 @@ guardrails:
   action_on_missing_dependency: "install_isolated"
   max_retries_on_dependency_fail: 2`;
 
+        // Parse summary_metrics
+        let metrics: any = {};
+        if (v.summary_metrics) {
+          try {
+            metrics = typeof v.summary_metrics === 'string'
+              ? JSON.parse(v.summary_metrics)
+              : v.summary_metrics;
+          } catch (e) {
+            console.error('Error parsing summary_metrics:', e);
+          }
+        }
+
+        // Format targets and guards
+        const target_suite_scores = (metrics.targets || []).map((t: any) => ({
+          taxonomy: t.id || 'Target Metric',
+          failures_before: Math.max(0, Math.round(10 * (1 - (t.pass_rate_base || 0)))),
+          failures_after: Math.max(0, Math.round(10 * (1 - (t.pass_rate_variant || 0)))),
+          status: t.delta > 0 ? 'IMPROVED' : t.delta < 0 ? 'REGRESSED' : 'STABLE'
+        }));
+
+        const guard_suite_scores = (metrics.guards || []).map((g: any) => ({
+          taxonomy: g.suite_id || 'Guard Suite',
+          failures_before: Math.max(0, Math.round(10 * (1 - (g.pass_rate_base || 0)))),
+          failures_after: Math.max(0, Math.round(10 * (1 - (g.pass_rate_variant || 0)))),
+          regressed: g.delta < -g.max_allowed_drop
+        }));
+
+        const status_lower = v.status ? v.status.toLowerCase() : 'pending';
+        const gatesPassed = metrics.decision === 'promoted' ? 1 : metrics.decision === 'rejected' ? 0 : (status_lower === 'promoted' ? 1 : 0);
+        const decisionReason = metrics.decision_reason || (status_lower === 'promoted' ? 'Passed all promotion gates.' : 'Pending evaluation.');
+
+        let delta_pass_rate = 0.0;
+        if (metrics.global) {
+          delta_pass_rate = (metrics.global.overall_success_rate_variant || 0.0) - (metrics.global.overall_success_rate_base || 0.0);
+        } else if (status_lower === 'promoted') {
+          delta_pass_rate = 0.3;
+        }
+
         return {
           id: v.id,
           name: v.variant_label,
           variant_label: v.variant_label,
-          status: v.status.toLowerCase(),
-          decision_reason: v.status === 'PROMOTED' ? 'Passed all promotion gates.' : 'Pending evaluation.',
+          status: status_lower,
+          decision_reason: decisionReason,
           config_diff: v.config_diff || defaultYaml,
-          run_id: null,
-          gates_passed: v.status === 'PROMOTED' ? 1 : 0,
-          delta_pass_rate: v.status === 'PROMOTED' ? 0.3 : 0.0,
-          regression_flag: 0,
-          target_suite_scores: [
-            { taxonomy: 'Git Conflict', failures_before: 5, failures_after: 2, status: v.status === 'PROMOTED' ? 'IMPROVED' : 'STABLE' }
+          run_id: v.run_id || metrics.run_id || null,
+          gates_passed: gatesPassed,
+          delta_pass_rate: Number(delta_pass_rate.toFixed(4)),
+          regression_flag: gatesPassed === 0 && metrics.decision === 'rejected' ? 1 : 0,
+          target_suite_scores: target_suite_scores.length > 0 ? target_suite_scores : [
+            { taxonomy: 'Git Conflict', failures_before: 5, failures_after: 2, status: status_lower === 'promoted' ? 'IMPROVED' : 'STABLE' }
           ],
-          guard_suite_scores: [
+          guard_suite_scores: guard_suite_scores.length > 0 ? guard_suite_scores : [
             { taxonomy: 'Filesystem Gating', failures_before: 0, failures_after: 0, regressed: false }
           ],
           generated_config: v.config_diff || defaultYaml,
@@ -230,10 +268,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to fetch run details' }, { status: runRes.status });
       }
       const runData = await runRes.json();
-      const harnessVersionId = runData.data?.harness_version;
+      const harnessVersionId = runData.data?.harness_version_id;
 
       if (!harnessVersionId) {
-        return NextResponse.json({ error: 'Selected run has no harness version' }, { status: 400 });
+        return NextResponse.json({ error: 'Selected run has no harness version id' }, { status: 400 });
       }
 
       // 2. Fetch all eval runs to find the ones matching the run's harness_version_id
@@ -267,6 +305,12 @@ export async function POST(req: NextRequest) {
       }
 
       const promotionData = await promotionRes.json();
+
+      // 5. Update run_id on Supabase experiment_variants row
+      await supabaseServer
+        .from('experiment_variants')
+        .update({ run_id: run_id })
+        .eq('id', variant_id);
 
       return NextResponse.json({
         success: true,

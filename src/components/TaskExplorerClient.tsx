@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Search,
   GraduationCap,
@@ -264,17 +264,37 @@ export default function TaskExplorerClient({
   // Filter computations
   const uniqueCategories = Array.from(new Set(tasks.map(t => t.category || '')));
   
-  const filteredTasks = tasks.filter(t => {
-    const matchesSearch = (t.slug || '').toLowerCase().includes(search.toLowerCase()) || 
-                          (t.description || '').toLowerCase().includes(search.toLowerCase()) ||
-                          (t.task_id || '').toLowerCase().includes(search.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
-    const matchesCategory = !categoryFilter || t.category === categoryFilter;
-    const matchesDifficulty = !difficultyFilter || t.difficulty === difficultyFilter;
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(t => {
+      const matchesSearch = (t.slug || '').toLowerCase().includes(search.toLowerCase()) || 
+                            (t.description || '').toLowerCase().includes(search.toLowerCase()) ||
+                            (t.task_id || '').toLowerCase().includes(search.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
+      const matchesCategory = !categoryFilter || t.category === categoryFilter;
+      const matchesDifficulty = !difficultyFilter || t.difficulty === difficultyFilter;
 
-    return matchesSearch && matchesStatus && matchesCategory && matchesDifficulty;
-  });
+      return matchesSearch && matchesStatus && matchesCategory && matchesDifficulty;
+    });
+  }, [tasks, search, statusFilter, categoryFilter, difficultyFilter]);
+
+  // Sync selection when filteredTasks list changes to prevent displaying filtered-out tasks
+  useEffect(() => {
+    if (activeTaskId) {
+      const isStillVisible = filteredTasks.some((t) => String(t.id) === activeTaskId);
+      if (!isStillVisible) {
+        if (filteredTasks.length > 0) {
+          setActiveTaskId(String(filteredTasks[0].id));
+        } else {
+          setActiveTaskId(null);
+          setActiveTask(null);
+          setActiveSteps([]);
+        }
+      }
+    } else if (filteredTasks.length > 0) {
+      setActiveTaskId(String(filteredTasks[0].id));
+    }
+  }, [filteredTasks, activeTaskId]);
 
   return (
     <div className="space-y-6">

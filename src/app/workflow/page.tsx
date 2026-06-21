@@ -125,17 +125,6 @@ function WorkflowBuilder() {
     setTimelineEntries((prev) => [...prev, entry]);
   }, []);
 
-  // Update the last matching timeline entry (e.g. transition pending→rejected)
-  const updateLastEntry = useCallback((id: string, updates: Partial<TimelineEntry>) => {
-    setTimelineEntries((prev) => {
-      const idx = prev.findIndex((e) => e.id === id);
-      if (idx === -1) return prev;
-      const next = [...prev];
-      next[idx] = { ...next[idx], ...updates };
-      return next;
-    });
-  }, []);
-
   // Handle Run Pipeline
   const handleRunPipeline = async () => {
     const isValid = await validate(nodes, edges);
@@ -205,15 +194,16 @@ function WorkflowBuilder() {
 
     if (result.paused) {
       setApprovalNodeId(result.approvalNodeId || '');
+      const resumeId = `resumed-${Date.now()}`;
       addTimelineEntry({
-        id: result.approvalId || 'resumed',
+        id: resumeId,
         type: 'resumed',
         label: 'Resumed',
         description: 'Execution continued after approval',
         timestamp: new Date().toISOString(),
       });
       addTimelineEntry({
-        id: result.approvalId ? `${result.approvalId}-requested` : 'requested2',
+        id: result.approvalId ? `${result.approvalId}-requested` : `requested-${Date.now()}`,
         type: 'requested',
         label: 'Approval Requested',
         description: result.approvalTitle || 'Approval Required',
@@ -224,7 +214,7 @@ function WorkflowBuilder() {
     }
 
     addTimelineEntry({
-      id: 'resumed',
+      id: `resumed-${Date.now()}`,
       type: 'resumed',
       label: 'Resumed',
       description: 'Execution continued after approval',
@@ -256,7 +246,7 @@ function WorkflowBuilder() {
   const handleReject = (note?: string) => {
     if (pendingApproval) {
       addTimelineEntry({
-        id: pendingApproval.id,
+        id: `${pendingApproval.id}-rejected`,
         type: 'rejected',
         label: 'Rejected',
         description: pendingApproval.title,
@@ -302,32 +292,26 @@ function WorkflowBuilder() {
           </p>
         </div>
         
-        <div className="workflow-controls flex items-center gap-4">
-          {/* Node Add Buttons */}
-          <div className="flex bg-gray-100 rounded-lg p-1 gap-1">
-            <button onClick={() => addNode('input', 'New Input')} className="px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white rounded">Input</button>
-            <button onClick={() => addNode('llm', 'New LLM')} className="px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white rounded">LLM</button>
-            <button onClick={() => addNode('text', 'New Text')} className="px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white rounded">Text</button>
-            <button onClick={() => addNode('logic', 'New Logic')} className="px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white rounded">Logic</button>
-            <button onClick={() => addNode('http', 'HTTP Request')} className="px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white rounded">HTTP</button>
-            <button onClick={() => addNode('database', 'Database Query')} className="px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white rounded">DB</button>
-            <button onClick={() => addNode('approval', 'Approval')} className="px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white rounded">Approval</button>
-            <button onClick={() => addNode('output', 'New Output')} className="px-2 py-1 text-xs font-medium text-gray-700 hover:bg-white rounded">Output</button>
-          </div>
-
+        <div className="workflow-controls flex items-center gap-4 flex-shrink-0">
           <WorkflowControls />
           
           <button
             onClick={handleRunPipeline}
             disabled={isValidating || !!error || isExecuting}
-            className="px-4 py-2 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
+            className="px-2.5 py-1 bg-purple-600 text-white text-xs font-semibold rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all whitespace-nowrap flex items-center gap-1.5"
           >
+            {(isExecuting || isValidating) && (
+              <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
             {isExecuting ? 'Executing...' : isValidating ? 'Validating...' : 'Run Pipeline'}
           </button>
           
           <button
             onClick={() => setIsLogsOpen(!isLogsOpen)}
-            className="px-3 py-2 bg-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-300 transition-all"
+            className="px-2.5 py-1 bg-gray-200 text-gray-700 text-xs font-semibold rounded-md hover:bg-gray-300 transition-all whitespace-nowrap"
           >
             {isLogsOpen ? 'Hide Logs' : 'Show Logs'}
           </button>
@@ -356,6 +340,36 @@ function WorkflowBuilder() {
         <TemplateSidebar onLoad={loadTemplate} />
         
         <div className="workflow-canvas-area flex flex-col relative flex-1">
+          {/* Floating Node Palette */}
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 bg-white/95 backdrop-blur border border-gray-200/80 shadow-xl rounded-full px-3 py-1.5 flex items-center gap-1.5 transition-all">
+            <span className="text-[10px] font-bold text-gray-400 tracking-wider px-2 border-r border-gray-200 mr-1 select-none">ADD NODE</span>
+            
+            <button onClick={() => addNode('input', 'New Input')} className="px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-full transition-all flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Input
+            </button>
+            <button onClick={() => addNode('llm', 'New LLM')} className="px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-purple-50 hover:text-purple-700 rounded-full transition-all flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-purple-500"></span> LLM
+            </button>
+            <button onClick={() => addNode('text', 'New Text')} className="px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-amber-50 hover:text-amber-700 rounded-full transition-all flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span> Text
+            </button>
+            <button onClick={() => addNode('logic', 'New Logic')} className="px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-full transition-all flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-500"></span> Logic
+            </button>
+            <button onClick={() => addNode('http', 'HTTP Request')} className="px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-cyan-50 hover:text-cyan-700 rounded-full transition-all flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-cyan-500"></span> HTTP
+            </button>
+            <button onClick={() => addNode('database', 'Database Query')} className="px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-full transition-all flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-indigo-500"></span> DB
+            </button>
+            <button onClick={() => addNode('approval', 'Approval')} className="px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-rose-50 hover:text-rose-700 rounded-full transition-all flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-rose-500"></span> Approval
+            </button>
+            <button onClick={() => addNode('output', 'New Output')} className="px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-red-50 hover:text-red-700 rounded-full transition-all flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-red-500"></span> Output
+            </button>
+          </div>
+
           <WorkflowCanvas
             initialNodes={nodes}
             initialEdges={edges}

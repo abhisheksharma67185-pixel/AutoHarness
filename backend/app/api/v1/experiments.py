@@ -85,18 +85,20 @@ def create_experiment(
     payload: CreateExperimentRequest,
     db: Session = Depends(get_db)
 ):
-    experiment_id = str(uuid.uuid4())
-    
-    # Map pydantic types to dict for JSON storage
+    from app.domain.models import _resolve_harness_version_id
+
+    # Resolve harness version slug/name to integer ID
+    hv_id = _resolve_harness_version_id(payload.base_harness_version_id)
+
+    # Map pydantic types to dict
     targets_dict = [t.dict() for t in payload.targets]
     policy_dict = payload.regression_policy.dict()
 
     experiment = Experiment(
-        id=experiment_id,
         benchmark_slug=payload.benchmark_slug,
         name=payload.name,
         description=payload.description,
-        base_harness_version_id=payload.base_harness_version_id,
+        base_harness_version_id=hv_id,
         target_description=payload.target_description,
         targets=targets_dict,
         regression_policy=policy_dict,
@@ -135,16 +137,23 @@ def create_variant(
     payload: CreateVariantRequest,
     db: Session = Depends(get_db)
 ):
-    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    from app.domain.models import _resolve_harness_version_id
+
+    try:
+        exp_id = int(experiment_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid experiment ID format")
+
+    exp = db.query(Experiment).filter(Experiment.id == exp_id).first()
     if not exp:
         raise HTTPException(status_code=404, detail="Experiment not found")
 
-    variant_id = str(uuid.uuid4())
+    hv_id = _resolve_harness_version_id(payload.harness_version_id)
+
     variant = ExperimentVariant(
-        id=variant_id,
-        experiment_id=experiment_id,
+        experiment_id=exp_id,
         variant_label=payload.variant_label,
-        harness_version_id=payload.harness_version_id,
+        harness_version_id=hv_id,
         status="pending",
         summary_metrics=None,
         created_at=datetime.utcnow()
@@ -284,7 +293,7 @@ def compute_promotion(
     overall_success_rate_base = 0.0
     overall_success_rate_variant = 0.0
 
-    run_base = db.query(Run).filter(Run.harness_version == experiment.base_harness_version_id).order_by(Run.created_at.desc()).first()
+    run_base = db.query(Run).filter(Run.harness_version_id == experiment.base_harness_version_id).order_by(Run.created_at.desc()).first()
     if run_base:
         overall_success_rate_base = float(run_base.global_score or 0.0)
     else:
@@ -296,7 +305,7 @@ def compute_promotion(
         if base_runs:
             overall_success_rate_base = sum(float(r.metrics.get("pass_rate", 0.0)) for r in base_runs) / len(base_runs)
 
-    run_var = db.query(Run).filter(Run.harness_version == variant.harness_version_id).order_by(Run.created_at.desc()).first()
+    run_var = db.query(Run).filter(Run.harness_version_id == variant.harness_version_id).order_by(Run.created_at.desc()).first()
     if run_var:
         overall_success_rate_variant = float(run_var.global_score or 0.0)
     else:

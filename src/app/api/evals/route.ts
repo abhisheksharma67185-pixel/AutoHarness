@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
     if (suite_id) {
       const cleanIdStr = suite_id.startsWith('es') ? suite_id.slice(2) : suite_id;
-      const suiteId = parseInt(cleanIdStr, 10);
+      const suiteId = /^\d+$/.test(cleanIdStr) ? parseInt(cleanIdStr, 10) : cleanIdStr;
 
       // Fetch suite
       const { data: suite, error: suiteError } = await supabaseServer

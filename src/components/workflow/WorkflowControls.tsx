@@ -55,27 +55,27 @@ export function WorkflowControls() {
       />
       <button
         onClick={() => fileInputRef.current?.click()}
-        className="px-3 py-1.5 text-xs font-medium bg-white text-gray-700 border border-gray-300 rounded hover:bg-gray-50 transition-colors shadow-sm"
+        className="px-2.5 py-1 text-xs font-semibold bg-white text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors shadow-sm whitespace-nowrap"
       >
         Import JSON
       </button>
       <button
         onClick={handleExport}
-        className="px-3 py-1.5 text-xs font-medium bg-white text-gray-700 border border-gray-300 rounded hover:bg-gray-50 transition-colors shadow-sm"
+        className="px-2.5 py-1 text-xs font-semibold bg-white text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors shadow-sm whitespace-nowrap"
       >
         Export JSON
       </button>
-      <div className="w-px h-4 bg-gray-300 mx-1" />
+      <div className="w-px h-4 bg-gray-200 mx-1" />
       {/* Save/Load placeholders that will hit the mocked backend API */}
       <button
         onClick={() => alert('Saved to server (Mock)')}
-        className="px-3 py-1.5 text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200 rounded hover:bg-purple-200 transition-colors shadow-sm"
+        className="px-2.5 py-1 text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-100 rounded-md hover:bg-purple-100 transition-colors shadow-sm whitespace-nowrap"
       >
         Save Workflow
       </button>
       <button
         onClick={() => alert('Loaded from server (Mock)')}
-        className="px-3 py-1.5 text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200 rounded hover:bg-purple-200 transition-colors shadow-sm"
+        className="px-2.5 py-1 text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-100 rounded-md hover:bg-purple-100 transition-colors shadow-sm whitespace-nowrap"
       >
         Load Workflow
       </button>

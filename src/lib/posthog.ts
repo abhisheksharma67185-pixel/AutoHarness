@@ -4,13 +4,15 @@ const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com';
 
 if (typeof window !== 'undefined') {
-  if (key && process.env.NODE_ENV !== 'development') {
+  const isPlaceholder = !key || key === 'your_posthog_project_api_key' || key.includes('dummy');
+  
+  if (!isPlaceholder && process.env.NODE_ENV !== 'development') {
     posthog.init(key, {
       api_host: host,
       capture_pageview: false,
     });
   } else if (process.env.NODE_ENV === 'development') {
-    if (key) {
+    if (!isPlaceholder) {
       posthog.init(key, {
         api_host: host,
         capture_pageview: false,

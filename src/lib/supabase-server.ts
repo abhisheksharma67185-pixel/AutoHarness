@@ -8,14 +8,16 @@ if (typeof window !== 'undefined') {
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl) {
-  throw new Error('Missing environment variable: NEXT_PUBLIC_SUPABASE_URL');
-}
+const isConfigured = 
+  !!supabaseUrl && 
+  supabaseUrl !== 'https://your-project-ref.supabase.co' &&
+  !!serviceRoleKey && 
+  serviceRoleKey !== 'your-supabase-service-role-key';
 
-if (!serviceRoleKey || serviceRoleKey === 'your_supabase_service_role_key_here') {
+if (!isConfigured) {
   console.warn(
-    'WARNING: SUPABASE_SERVICE_ROLE_KEY is not configured or is set to placeholder. ' +
-    'Server-side Supabase client writes will fail.'
+    'WARNING: Supabase is not configured or is set to placeholder values. ' +
+    'Server-side Supabase client queries will fail until a valid configuration is provided and the server is restarted.'
   );
 }
 
@@ -26,9 +28,27 @@ if (!serviceRoleKey || serviceRoleKey === 'your_supabase_service_role_key_here')
  * USE WITH CAUTION: Only import this in Route Handlers, Server Actions,
  * or Server Components. Never expose this client or its data directly to client code.
  */
-export const supabaseServer = createClient(supabaseUrl, serviceRoleKey || '', {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
+const rawClient = createClient(
+  supabaseUrl || 'https://placeholder-url.supabase.co',
+  serviceRoleKey || '',
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  }
+);
+
+export const supabaseServer = new Proxy(rawClient, {
+  get(target, prop, receiver) {
+    const queryMethods = ['from', 'rpc', 'auth', 'storage', 'functions'];
+    if (typeof prop === 'string' && queryMethods.includes(prop)) {
+      if (!isConfigured) {
+        throw new Error(
+          'Supabase is not configured. Please ensure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set in your .env file, and restart the development server.'
+        );
+      }
+    }
+    return Reflect.get(target, prop, receiver);
+  }
 });
