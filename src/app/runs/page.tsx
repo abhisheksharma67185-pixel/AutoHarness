@@ -23,7 +23,7 @@ export default function RunsPage() {
 
   const fetchRuns = async () => {
     try {
-      const res = await fetch('/api/runs');
+      const res = await fetch('/api/runs', { cache: 'no-store' });
       const data = await res.json();
       setRuns(data.runs || []);
     } catch (err) {

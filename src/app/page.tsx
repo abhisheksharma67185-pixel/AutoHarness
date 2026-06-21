@@ -46,9 +46,9 @@ export default function OverviewPage() {
     async function fetchAll() {
       try {
         const [runsRes, fmRes, evalsRes] = await Promise.all([
-          fetch('/api/runs'),
-          fetch('/api/failures/modes'),
-          fetch('/api/evals'),
+          fetch('/api/runs', { cache: 'no-store' }),
+          fetch('/api/failures/modes', { cache: 'no-store' }),
+          fetch('/api/evals', { cache: 'no-store' }),
         ]);
 
         const runsData = await runsRes.json();

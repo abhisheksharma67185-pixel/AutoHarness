@@ -32,8 +32,8 @@ function TaskExplorerLoader() {
     async function fetchAll() {
       try {
         const [runsRes, evalsRes] = await Promise.all([
-          fetch('/api/runs'),
-          fetch('/api/evals'),
+          fetch('/api/runs', { cache: 'no-store' }),
+          fetch('/api/evals', { cache: 'no-store' }),
         ]);
 
         const runsData = await runsRes.json();

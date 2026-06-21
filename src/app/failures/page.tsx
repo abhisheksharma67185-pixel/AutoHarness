@@ -25,7 +25,7 @@ function FailureModesLoader() {
   useEffect(() => {
     async function fetchRuns() {
       try {
-        const res = await fetch('/api/runs');
+        const res = await fetch('/api/runs', { cache: 'no-store' });
         const data = await res.json();
         const fetchedRuns: Run[] = data.runs || [];
         setRuns(fetchedRuns);

@@ -14,9 +14,9 @@ export default function ExperimentsPage() {
     async function fetchAll() {
       try {
         const [expRes, runsRes, fmRes] = await Promise.all([
-          fetch('/api/experiments'),
-          fetch('/api/runs'),
-          fetch('/api/failures/modes'),
+          fetch('/api/experiments', { cache: 'no-store' }),
+          fetch('/api/runs', { cache: 'no-store' }),
+          fetch('/api/failures/modes', { cache: 'no-store' }),
         ]);
 
         const expData = await expRes.json();
